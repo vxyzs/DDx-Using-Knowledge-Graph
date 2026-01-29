@@ -1,7 +1,8 @@
 import math
 from core.nlu import DDxGraphNLU
+from core.parser import Parser
 
-class KG_Traversal(DDxGraphNLU):
+class KG_Traversal(Parser, DDxGraphNLU):
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
@@ -9,7 +10,8 @@ class KG_Traversal(DDxGraphNLU):
     ABSENCE_WEIGHT = 0.5
 
     def __init__(self, G, scores, user_input=None):
-        super().__init__(G)
+        Parser.__init__(self)
+        DDxGraphNLU.__init__(self, G)
 
         self.G = G
         self.scores = scores
@@ -25,7 +27,7 @@ class KG_Traversal(DDxGraphNLU):
         """
         Parse free-text user input and initialize evidence + scores.
         """
-        results, evidences, values = self.parse_query(user_input)
+        evidences, values = self.parse_query(user_input)
 
         if not evidences:
             return
@@ -210,7 +212,7 @@ class KG_Traversal(DDxGraphNLU):
             evidence = self.get_discriminating_evidence(candidate_conditions)
             if evidence is None: break
 
-            print(f"Selected evidence: {self.G.nodes[evidence]}")
+            # print(f"Selected evidence: {self.G.nodes[evidence]}")
             parent = self.G.nodes[evidence].get("parent", None)
             print(f"Parent evidence: {parent}")
 

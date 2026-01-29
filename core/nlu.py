@@ -45,7 +45,7 @@ class DDxGraphNLU:
         into a fast Matrix Multiplication operation.
         """
         self.G = G
-        print(f"Loading Model: {embedding_model_name}...")
+        # print(f"Loading Model: {embedding_model_name}...")
         self.model = SentenceTransformer(embedding_model_name)
 
         # --- INDEXING STAGE ---
@@ -53,7 +53,7 @@ class DDxGraphNLU:
         self.evidence_ids = []
         embeddings_list = []
 
-        print("Loading embeddings from Graph Evidence Nodes...")
+        # print("Loading embeddings from Graph Evidence Nodes...")
         count = 0
 
         # Iterate over all nodes in the NetworkX graph
@@ -79,7 +79,7 @@ class DDxGraphNLU:
         # Convert list of vectors into a 2D Numpy Matrix for vectorized cosine_similarity
         if count > 0:
             self.evidence_matrix = np.vstack(embeddings_list)
-            print(f" -> Loaded {len(self.evidence_ids)} evidence vectors.")
+            # print(f" -> Loaded {len(self.evidence_ids)} evidence vectors.")
         else:
             print("Warning: No pre-computed embeddings found. Engine might be slow.")
 
