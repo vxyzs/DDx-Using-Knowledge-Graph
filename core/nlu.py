@@ -228,7 +228,7 @@ class DDxGraphNLU:
 if __name__ == "__main__":
     # Assumes 'G' is a NetworkX graph already loaded with DDxPLUS data
     # and embeddings on the nodes.
-    G = pickle.load(open("../Pickle/kg.pkl", "rb"))
+    G = pickle.load(open("Pickle/kg.pkl", "rb"))
     # 1. Initialize Engine
     nlu = DDxGraphNLU(G)
 

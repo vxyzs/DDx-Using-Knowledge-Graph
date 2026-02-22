@@ -2,8 +2,11 @@ import pickle
 from core.traversal import KG_Traversal
 
 def main():
-    G = pickle.load(open("./Pickle/kg.pkl", "rb"))
-    # Further processing...
+    try:
+        G = pickle.load(open("./Pickle/kg.pkl", "rb"))
+    except FileNotFoundError:
+        print("Knowledge Graph pickle file not found. Ensure './Pickle/kg.pkl' exists.")
+        return
 
     scores = {c: 0.0 for c in G.nodes if G.nodes[c]["type"] == "condition"}
 

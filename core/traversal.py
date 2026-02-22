@@ -1,8 +1,8 @@
 import math
-from core.nlu import DDxGraphNLU
 from core.parser import Parser
 
-class KG_Traversal(Parser, DDxGraphNLU):
+# Note: We removed DDxGraphNLU entirely! 
+class KG_Traversal(Parser):
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
@@ -10,8 +10,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
     ABSENCE_WEIGHT = 0.5
 
     def __init__(self, G, scores, user_input=None):
-        Parser.__init__(self)
-        DDxGraphNLU.__init__(self, G)
+        Parser.__init__(self) # Initialize the LangChain LLM Pipeline
 
         self.G = G
         self.scores = scores
@@ -25,22 +24,19 @@ class KG_Traversal(Parser, DDxGraphNLU):
 
     def _parse_initial_query(self, user_input):
         """
-        Parse free-text user input and initialize evidence + scores.
+        Parse free-text user input and initialize evidence + scores using Langchain parser.
         """
         evidences, values = self.parse_query(user_input)
 
         if not evidences:
+            print("No evidence successfully parsed from initial input.")
             return
 
         print("\nParsed initial evidence:")
         for e, v in zip(evidences, values):
             print(f"  {e} → {v}")
 
-        self.apply_initial_evidence(
-            evidences=evidences,
-            values=values
-        )
-
+        self.apply_initial_evidence(evidences, values)
 
     # ---------------- UTIL ----------------
     def safe_log(self, p):
@@ -94,7 +90,6 @@ class KG_Traversal(Parser, DDxGraphNLU):
 
             if is_yes:
                 self.scores[c] = self.capped_add(self.scores[c], self.safe_log(p))
-                self.observed_yes.add(evidence)
             else:
                 if p >= self.ABSENCE_PROB_THRESHOLD:
                     penalty = self.safe_log(1.0 - p)
@@ -102,13 +97,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
                         self.scores[c],
                         self.ABSENCE_WEIGHT * penalty
                     )
-                self.observed_no.add(evidence)
-
-        self.asked.add(evidence)
 
     def apply_value_answer(self, evidence, chosen_values):
-        self.observed_yes.add(evidence)
-
         for c in self.scores:
             best_pv = self.SMOOTH
             for v in chosen_values:
@@ -117,84 +107,37 @@ class KG_Traversal(Parser, DDxGraphNLU):
                     best_pv,
                     stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
                 )
-
             self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
 
-        self.asked.add(evidence)
 
-    # ---------------- INITIAL EVIDENCE ----------------
     def apply_initial_evidence(self, evidences, values):
+        """
+        Unified logic to apply evidence to the graph. 
+        Works for both the initial input AND the interactive LLM loop.
+        """
         for evid, val in zip(evidences, values):
             self.asked.add(evid)
 
+            # Ensure parents are marked as asked if a child is triggered
             parent = self.G.nodes[evid].get("parent")
             if val not in ("YES", "NO") and parent:
                 self.asked.add(parent)
 
-            if val == "YES":
-                self.observed_yes.add(evid)
-            elif val == "NO":
+            # Track observations
+            if val == "NO":
                 self.observed_no.add(evid)
+            else:
+                self.observed_yes.add(evid) # Both 'YES' and value arrays count as presence
 
-            # Apply scoring
+            # Apply mathematical scoring
             if val not in ("YES", "NO"):
-                for v in val:
-                    for c in self.scores:
-                        stats = self.G.edges[evid, v].get("cond_stats", {})
-                        p = stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
-                        self.scores[c] += self.safe_log(p)
+                self.apply_value_answer(evid, val)
             else:
                 self.apply_binary_answer(evid, val == "YES")
 
     # ---------------- MAIN LOOP ----------------
     def run(self, max_steps=5, top_k_conditions=10):
         print("\n=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
-
-        # for step in range(max_steps):
-        #     ranked = sorted(
-        #         self.scores.items(),
-        #         key=lambda x: x[1],
-        #         reverse=True
-        #     )[:top_k_conditions]
-
-        #     candidates = [c for c, _ in ranked]
-
-        #     print(f"\nStep {step + 1}")
-        #     for c, s in ranked:
-        #         print(f"{c:40s} score={s:.4f}")
-
-        #     if len(candidates) <= 1:
-        #         break
-
-        #     evidence = self.get_discriminating_evidence(candidates)
-        #     if not evidence:
-        #         break
-
-        #     print(f"\n🩺 {self.G.nodes[evidence]['question_en']}")
-
-        #     values = [
-        #         v for _, v in self.G.out_edges(evidence)
-        #         if self.G.nodes[v]["type"].startswith("possible")
-        #     ]
-
-        #     if not values:
-        #         ans = input("yes / no: ").strip().lower()
-        #         self.apply_binary_answer(evidence, ans in ("y", "yes"))
-        #         continue
-
-        #     text = input()
-        #     query = self.G.nodes[evidence]['question_en'] + " " + text
-        #     matches = self._find_best_match(query)
-
-        #     if matches:
-        #         for m in matches:
-        #             if m and m["value"]:
-        #                 chosen = m["value"] if isinstance(m["value"], list) else [m["value"]]
-        #                 self.apply_value_answer(evidence, chosen)
-
-        # print("\n=== FINAL RANKED CONDITIONS ===")
-        # for c, s in sorted(self.scores.items(), key=lambda x: x[1], reverse=True):
-        #     print(f"{c:40s} score={s:.4f}")
 
         for step in range(max_steps):
             # --- A. Rank and Display the current Top Candidates ---
@@ -212,98 +155,40 @@ class KG_Traversal(Parser, DDxGraphNLU):
             evidence = self.get_discriminating_evidence(candidate_conditions)
             if evidence is None: break
 
-            # print(f"Selected evidence: {self.G.nodes[evidence]}")
             parent = self.G.nodes[evidence].get("parent", None)
-            print(f"Parent evidence: {parent}")
-
+            
+            # --- Handle Parent Evidence if exists ---
             if parent and parent != evidence and parent not in self.observed_yes:
                 if parent not in self.asked:
-                    print(f"\n🩺 Question: {self.G.nodes[parent]['question_en']}")
-                    print(f"\nEvidence ID: {parent}")
+                    question = self.G.nodes[parent]['question_en']
+                    print(f"\n🩺 Question: {question}")
+                    ans = input("Your answer: ").strip()
 
-                    ans = input("Answer (yes / no): ").strip().lower()
-                    is_yes = ans in ("yes", "y")
+                    # Feed both the doctor's question and patient's answer to the LLM
+                    context_text = f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+                    ext_evidences, ext_values = self.parse_query(context_text)
 
-                    for c in self.scores:
-                        p = self.G.edges[c, parent]["p_e_given_c"] if self.G.has_edge(c, parent) else self.SMOOTH
-
-                        if is_yes:
-                            delta = self.safe_log(p)
-                            self.observed_yes.add(parent)
-                            self.scores[c] = self.capped_add(self.scores[c], delta)
-                        else:
-                            if p >= self.ABSENCE_PROB_THRESHOLD:
-                                penalty = self.safe_log(1.0 - p)
-                                self.scores[c] = self.capped_add(self.scores[c], self.ABSENCE_WEIGHT*penalty)
-                            self.observed_no.add(parent)
-
+                    if ext_evidences:
+                        self.apply_initial_evidence(ext_evidences, ext_values)
+                    
                     self.asked.add(parent)
 
-                if parent in self.observed_no: # is asked but is not in observed_yes
+                if parent in self.observed_no:
                     continue
-                # if parent is asked and is in observed_yes, we proceed to ask evidence
 
+            # --- Handle Chosen Evidence ---
             self.asked.add(evidence)
-            print(f"\n🩺 Question: {self.G.nodes[evidence]['question_en']}")
-            print(f"\nEvidence ID: {evidence}")
-            values = [
-                v for _, v in self.G.out_edges(evidence)
-                if self.G.nodes[v]["type"].startswith("possible")
-            ]
+            question = self.G.nodes[evidence]['question_en']
+            
+            print(f"\n🩺 Question: {question}")
+            ans = input("Your answer: ").strip()
 
-            # ---------------- Binary evidence ----------------
-            if not values:
-                ans = input("Answer (yes / no): ").strip().lower()
-                is_yes = ans in ("yes", "y")
-
-                for c in self.scores:
-                    p = self.G.edges[c, evidence]["p_e_given_c"] if self.G.has_edge(c, evidence) else self.SMOOTH
-
-                    if is_yes:
-                        delta = self.safe_log(p)
-                        self.observed_yes.add(evidence)
-                        self.scores[c] = self.capped_add(self.scores[c], delta)
-                    else:
-                        if p >= self.ABSENCE_PROB_THRESHOLD:
-                            penalty = self.safe_log(1.0 - p)
-                            self.scores[c] = self.capped_add(self.scores[c], self.ABSENCE_WEIGHT*penalty)
-                        self.observed_no.add(evidence)
-
-                continue
-
-            choice_text = input()
-            choice_text_with_evidence = self.G.nodes[evidence]['question_en'] + " " + choice_text
-            matches = self._find_best_match(choice_text_with_evidence)
-            print(f"NLU Match: {matches}")
-            if matches:
-                for match in matches:
-                    if match and match['value']:
-                        if isinstance(match['value'], list):
-                            chosen_values = match['value']
-                            print(f"Chosen values: {chosen_values}")
-                            self.observed_yes.add(evidence)
-                            for chosen_value in chosen_values:
-                                
-
-                                for c in self.scores:
-                                    best_pv = self.SMOOTH
-
-                                    stats = self.G.edges[evidence, chosen_value].get("cond_stats", {})
-                                    best_pv = max(best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH))
-
-                                    self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
-                        else:
-                            chosen_value = match['value']
-                            print(f"Chosen value: {chosen_value}")
-                            self.observed_yes.add(evidence)
-                            for c in self.scores:
-                                best_pv = self.SMOOTH
-
-                                stats = self.G.edges[evidence, chosen_value].get("cond_stats", {})
-                                best_pv = max(best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH))
-
-                                self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
-                        continue
+            # Feed both the doctor's question and patient's answer to the LLM
+            context_text = f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+            ext_evidences, ext_values = self.parse_query(context_text)
+            
+            if ext_evidences:
+                self.apply_initial_evidence(ext_evidences, ext_values)
 
         print("\n=== FINAL RANKED CONDITIONS ===")
         for c, s in sorted(self.scores.items(), key=lambda x: x[1], reverse=True):
