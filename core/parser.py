@@ -2,7 +2,7 @@ import os
 import json
 from typing import List, Union, Any
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -26,7 +26,7 @@ class PatientEvidences(BaseModel):
         description=(
             "Corresponding values for the evidences. "
             "- For Boolean ('B') or absent evidences: use 'YES' or 'NO'. "
-            "- For categorical/numerical: use a list of exact mapped IDs (e.g., ['E_55_@_V_125'] or ['E_59_@_5']). "
+            "- For categorical/numerical: use a list of exact mapped IDs (e.g., [['E_55_@_V_125', 'E_55_@_V_29']]]). "
             "- For multiple values: include all mapped IDs in the list."
         )
     )
@@ -38,7 +38,7 @@ class Parser:
         # --- 2. Initialize the LLM ---
         self.llm = ChatOpenAI(
             model=self.model_name,
-            api_key=os.getenv("HF_TOKEN"),
+            api_key=SecretStr(os.getenv("HF_TOKEN") or ""),
             base_url="https://router.huggingface.co/v1",
             temperature=0.0 # Low temperature for more reliable factual extraction
         )
@@ -102,7 +102,7 @@ class Parser:
             
         except Exception as e:
             print(f"Error during LLM decoding/parsing: {e}")
-            return None
+            return PatientEvidences(evidences=[], values=[])
          
     def parse_query(self, text: str):
         parsed_data = self.parser(text)

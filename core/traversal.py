@@ -59,7 +59,16 @@ class KG_Traversal(Parser):
 
         for c in candidate_conditions:
             for _, e, _ in self.G.out_edges(c, data=True):
-                if self.G.nodes[e]["type"] != "evidence" or e in self.asked:
+                if self.G.nodes[e]["type"] != "evidence":
+                    continue
+
+                if e in self.asked:
+                    continue
+
+                parent = self.G.nodes[e].get("parent", None)
+
+                # Skip children if parent was answered NO
+                if parent and parent in self.observed_no:
                     continue
 
                 ps = []
@@ -139,7 +148,8 @@ class KG_Traversal(Parser):
     def run(self, max_steps=5, top_k_conditions=10):
         print("\n=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
 
-        for step in range(max_steps):
+        step = 0
+        while step < max_steps:       
             # --- A. Rank and Display the current Top Candidates ---
             ranked = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[:top_k_conditions]
             candidate_conditions = [c for c, _ in ranked]
@@ -172,6 +182,7 @@ class KG_Traversal(Parser):
                         self.apply_initial_evidence(ext_evidences, ext_values)
                     
                     self.asked.add(parent)
+                    step += 1
 
                 if parent in self.observed_no:
                     continue
@@ -189,7 +200,7 @@ class KG_Traversal(Parser):
             
             if ext_evidences:
                 self.apply_initial_evidence(ext_evidences, ext_values)
-
+            step += 1
         print("\n=== FINAL RANKED CONDITIONS ===")
         for c, s in sorted(self.scores.items(), key=lambda x: x[1], reverse=True):
             print(f"{c:40s} score={s:.4f}")
