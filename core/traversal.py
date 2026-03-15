@@ -1,7 +1,6 @@
 import math
 from core.parser import Parser
 
-# Note: We removed DDxGraphNLU entirely! 
 class KG_Traversal(Parser):
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6

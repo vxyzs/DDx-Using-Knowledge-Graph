@@ -3,6 +3,8 @@ import json
 from typing import List, Union, Any
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
+from nlu import DDxGraphNLU
+import pickle
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -32,7 +34,7 @@ class PatientEvidences(BaseModel):
     )
 
 class Parser:
-    def __init__(self, model_name="openai/gpt-oss-20b"):
+    def __init__(self, model_name="openai/gpt-oss-120b"):
         self.model_name = model_name
         
         # --- 2. Initialize the LLM ---
@@ -46,7 +48,7 @@ class Parser:
         # --- 3. Initialize the Parser ---
         self.output_parser = PydanticOutputParser(pydantic_object=PatientEvidences)
 
-    def parser(self, text: str) -> PatientEvidences:
+    def parser(self, text: str, context: Union[str, List[Any], dict]) -> PatientEvidences:
         # --- 4. Define the Prompt Template ---
         prompt = PromptTemplate(
             template='''
@@ -63,18 +65,21 @@ class Parser:
 
             Patient text: "{text}"
 
-            Knowledge Graph Evidences Subset: {release_evidences}
+            Knowledge Graph Evidences Subset: {context}
             
             {format_instructions}
             ''',
-            input_variables=["text", "release_evidences"],
+            input_variables=["text", "context"],
             partial_variables={"format_instructions": self.output_parser.get_format_instructions()},
         )
 
         try:
+            # Ensure we pass a JSON string into the prompt (the LLM expects a serialized structure)
+            context_json = context if isinstance(context, str) else json.dumps(context)
+
             prompt_value = prompt.invoke({
                 "text": text,
-                "release_evidences": json.dumps(release_evidences)
+                "context": context_json,
             })
             
             # 1. Get raw string from LLM
@@ -104,8 +109,16 @@ class Parser:
             print(f"Error during LLM decoding/parsing: {e}")
             return PatientEvidences(evidences=[], values=[])
          
-    def parse_query(self, text: str):
-        parsed_data = self.parser(text)
+    def parse_query(self, text: str, context: Union[str, List[Any], dict]):
+        """Parse a user query with an optional context payload.
+
+        Args:
+            text: The raw user input string.
+            context: A JSON string or Python object (list/dict) representing relevant evidences.
+                     If a JSON string is passed (as returned by `nlu.retrieve`), it will be
+                     used directly. If a Python object is passed, it will be serialized.
+        """
+        parsed_data = self.parser(text, context)
         if parsed_data is None:
             return [], []
 
@@ -113,8 +126,18 @@ class Parser:
   
 if __name__ == "__main__":
     parser = Parser()
+    G = pickle.load(open("Pickle/kg.pkl", "rb"))
+    nlu = DDxGraphNLU(G)
+
     sample_text = "For the past couple of weeks, I’ve been having sudden episodes of very intense pain on one side of my head, mainly around my eye and temple. The pain feels sharp and unbearable, and when it happens my eye starts watering and my nose feels blocked on the same side. I can’t stay still during these attacks and feel extremely restless. These episodes happen multiple times and often around the same time of day, then completely go away in between.No fever and cough."
-    evidences, values = parser.parse_query(sample_text)
+    context = nlu.retrieve(sample_text)
+
+    print("\n" + "="*50)
+    print("1. RETRIEVED CONTEXT FROM NLU")
+    print("="*50)
+    print(context)
+    print("="*50 + "\n") 
+    evidences, values = parser.parse_query(sample_text, context)
     
     # --- PRINT 3: FINAL OUTPUTS ---
     print("\n" + "="*50)

@@ -1,9 +1,12 @@
-import math
+import json
 import re
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 import pickle
+
+with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
+    release_evidences = json.load(f)
 
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
@@ -18,14 +21,14 @@ EMBEDDING_MODEL = 'cambridgeltl/SapBERT-from-PubMedBERT-fulltext'
 #     specific symptom (Evidence).
 #   - Lowering this increases recall (catching subtle symptoms) but risks
 #     false positives (matching noise).
-THRESH_EVIDENCE = 0.50
+THRESH_EVIDENCE = 0.40
 
 # THRESH_VALUE: (0.0 - 1.0)
 #   - Minimum similarity score required to confirm a specific detail/value
 #     (e.g., matching "Chest" instead of just generic "Pain").
 #   - This should be higher than THRESH_EVIDENCE to prevent the system from
 #     hallucinating specific details when the user was actually vague.
-THRESH_VALUE = 0.65
+THRESH_VALUE = 0.55
 
 # ==============================================================================
 # CLASS: DDxGraphNLU
@@ -44,6 +47,9 @@ class DDxGraphNLU:
         Why? This converts the search problem from a slow graph traversal
         into a fast Matrix Multiplication operation.
         """
+        
+        with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
+            self.release_evidences = json.load(f)
         self.G = G
         # print(f"Loading Model: {embedding_model_name}...")
         self.model = SentenceTransformer(embedding_model_name)
@@ -142,7 +148,7 @@ class DDxGraphNLU:
 
         return all_findings, evidences, values
 
-    def _find_best_match(self, text, top_k=5):
+    def _find_best_match(self, text, top_k=7):
             query_vec = self.model.encode([text])
             scores = cosine_similarity(query_vec, self.evidence_matrix)[0]
 
@@ -215,12 +221,32 @@ class DDxGraphNLU:
             sorted_results = sorted(best_results, key=lambda x: x['score'], reverse=True)
             k = 0
             for res in sorted_results:
-                if best_global_score - res['score'] > 0.05:
+                if best_global_score - res['score'] > 0.1:
                     break
                 k += 1
             
             return sorted_results[:k] if k > 0 else None
 
+    def retrieve(self, text: str):
+        """
+        Main entry point for parsing user input.
+        This function orchestrates the entire NLU pipeline:
+        1. It takes raw user input and processes it through chunking, negation detection, and semantic search.
+        2. It aggregates results into a structured format that includes evidence IDs, matched values, and negation status.
+
+         Args:
+            text (str): The raw input string from the user describing symptoms.
+        """
+        _, evidence, values = self.parse_query(text)
+        collected_evidences = []
+        seen_evidences = set()
+        for evid, val in zip(evidence, values):
+            print(f"{evid}: {val}")
+            if evid in seen_evidences:
+                continue
+            seen_evidences.add(evid)
+            collected_evidences.append(release_evidences[evid])
+        return json.dumps(collected_evidences)
 
 # ==============================================================================
 # MAIN EXECUTION BLOCK (Usage Example)
@@ -233,11 +259,12 @@ if __name__ == "__main__":
     nlu = DDxGraphNLU(G)
 
     # 2. Define a complex user query with multiple symptoms and negation
-    user_input = "I have no pain"
+    user_input = "For the past couple of weeks, I’ve been having sudden episodes of very intense pain on one side of my head, mainly around my eye and temple. The pain feels sharp and unbearable, and when it happens my eye starts watering and my nose feels blocked on the same side. I can’t stay still during these attacks and feel extremely restless. These episodes happen multiple times and often around the same time of day, then completely go away in between.No fever and cough."
 
     # 3. Run the Parser
     results, evidence, values = nlu.parse_query(user_input)
-
+    collected_evidences = nlu.retrieve(user_input)
+    
     # 4. Display Results
     print(f"\n=== RESULT: Found {len(results)} items ===")
     for res in results:
@@ -251,5 +278,6 @@ if __name__ == "__main__":
             val_str = ""
         print(f"Evidence: {res['eid']}{val_str} [{status}]")
 
-    for evid, val in zip(evidence, values):
-        print(f"{evid}: {val}")
+    print(collected_evidences)
+
+    
