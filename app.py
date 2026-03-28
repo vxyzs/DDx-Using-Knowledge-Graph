@@ -2,6 +2,8 @@ import streamlit as st
 import pickle
 import time
 from core.traversal import KG_Traversal
+from core.nlu import DDxGraphNLU
+from core.parser import Parser
 
 st.set_page_config(
     page_title="Differential Diagnosis Assistant", page_icon="🩺", layout="wide"
@@ -43,7 +45,11 @@ with st.spinner("Loading Knowledge Graph..."):
 
 def init_traversal(user_input):
     scores = {c: 0.0 for c in G.nodes if G.nodes[c]["type"] == "condition"}
-    traversal = KG_Traversal(G, scores, user_input=user_input)
+    
+    nlu = DDxGraphNLU(G)
+    parser = Parser()
+
+    traversal = KG_Traversal(G, scores, nlu, parser, user_input=user_input)
     st.session_state.traversal = traversal
     st.session_state.step = 0
     st.session_state.max_steps = 5
@@ -100,8 +106,8 @@ def process_answer(ans):
     evidence_id = st.session_state.current_evidence
 
     context_text = f"The doctor asked: '{question}'. The patient answered: '{ans}'"
-    context = t.retrieve(context_text)
-    ext_evidences, ext_values = t.parse_query(context_text, context)
+    context = t.nlu.retrieve(context_text)
+    ext_evidences, ext_values = t.parser.parse_query(context_text, context)
 
     if ext_evidences:
         t.apply_initial_evidence(ext_evidences, ext_values)
