@@ -14,7 +14,7 @@ from core.parser import Parser
 
 DATA_PATH = "./Data/ddxplus/release_test_patients.csv"
 
-N_SAMPLES = 1000
+N_SAMPLES = 10000
 RANDOM_SEED = 42
 
 TOP_KS = [1, 3, 5]
@@ -32,8 +32,8 @@ with open("./Data/ddxplus/release_evidences.json", "r") as f:
 
 print("Loading test patients...")
 df = pd.read_csv(DATA_PATH)
-df = df[df["PATHOLOGY"] == "URTI"]
-df = df.sample(n=N_SAMPLES, random_state=RANDOM_SEED).reset_index(drop=True)
+df = df[df["PATHOLOGY"] == "URTI"]  # TEMP: filter for easier debugging
+df = df.sample(n=min(len(df), N_SAMPLES), random_state=RANDOM_SEED).reset_index(drop=True)
 
 print(f"Loaded {len(df)} patients.")
 

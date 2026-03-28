@@ -4,7 +4,7 @@ from typing import List, Union, Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
-from nlu import DDxGraphNLU
+from core.nlu import DDxGraphNLU
 import pickle
 
 from langchain_openai import ChatOpenAI
