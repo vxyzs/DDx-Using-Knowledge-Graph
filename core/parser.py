@@ -4,11 +4,10 @@ from typing import List, Union, Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
-from core.nlu import DDxGraphNLU
+from nlu import DDxGraphNLU
 import pickle
 
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -17,6 +16,7 @@ load_dotenv()
 with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
     release_evidences = json.load(f)
 
+# --- 1. Define the Pydantic Schema ---
 class PatientEvidences(BaseModel):
     evidences: List[str] = Field(
         description=(
@@ -35,7 +35,7 @@ class PatientEvidences(BaseModel):
     )
 
 class Parser:
-    def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
+    def __init__(self, model_name="gpt-oss:120b"):
         self.model_name = model_name
         
         # --- 2. Initialize the LLM ---

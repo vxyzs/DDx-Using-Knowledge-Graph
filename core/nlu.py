@@ -266,7 +266,7 @@ if __name__ == "__main__":
     # 3. Run the Parser
     results, evidence, values = nlu.parse_query1(user_input)
     collected_evidences = nlu.retrieve(user_input)
-
+    
     # 4. Display Results
     print(f"\n=== RESULT: Found {len(results)} items ===")
     for res in results:
