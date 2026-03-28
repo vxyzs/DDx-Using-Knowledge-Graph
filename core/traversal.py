@@ -3,16 +3,16 @@ from core.nlu import DDxGraphNLU
 from core.parser import Parser
 
 
-class KG_Traversal(Parser, DDxGraphNLU):
+class KG_Traversal:
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
     ABSENCE_PROB_THRESHOLD = 0.5
     ABSENCE_WEIGHT = 0.5
 
-    def __init__(self, G, scores, user_input=None):
-        Parser.__init__(self)  # Initialize the LangChain LLM Pipeline
-        DDxGraphNLU.__init__(self, G)  # Initialize the DDxGraphNLU
+    def __init__(self, G, scores, nlu, parser, user_input=None):
+        self.nlu = nlu
+        self.parser = parser
 
         self.G = G
         self.scores = scores
@@ -28,8 +28,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
         """
         Parse free-text user input and initialize evidence + scores.
         """
-        context = self.retrieve(user_input)
-        evidences, values = self.parse_query(user_input, context)
+        context = self.nlu.retrieve(user_input)
+        evidences, values = self.parser.parse_query(user_input, context)
 
         if not evidences:
             return
@@ -222,8 +222,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
                     context_text = (
                         f"The doctor asked: '{question}'. The patient answered: '{ans}'"
                     )
-                    context = self.retrieve(context_text)
-                    ext_evidences, ext_values = self.parse_query(context_text, context)
+                    context = self.nlu.retrieve(context_text)
+                    ext_evidences, ext_values = self.parser.parse_query(context_text, context)
 
                     if ext_evidences:
                         self.apply_initial_evidence(ext_evidences, ext_values)
@@ -244,8 +244,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
             context_text = (
                 f"The doctor asked: '{question}'. The patient answered: '{ans}'"
             )
-            context = self.retrieve(context_text)
-            ext_evidences, ext_values = self.parse_query(context_text, context)
+            context = self.nlu.retrieve(context_text)
+            ext_evidences, ext_values = self.parser.parse_query(context_text, context)
 
             if ext_evidences:
                 self.apply_initial_evidence(ext_evidences, ext_values)

@@ -14,7 +14,7 @@ from core.parser import Parser
 
 DATA_PATH = "./Data/ddxplus/release_test_patients.csv"
 
-N_SAMPLES = 100
+N_SAMPLES = 1000
 RANDOM_SEED = 42
 
 TOP_KS = [1, 3, 5]
@@ -132,7 +132,7 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
 
         # -------- Initialize scores --------
         scores = {c: 0.0 for c in conditions}
-        traversal = KG_Traversal(G, scores)
+        traversal = KG_Traversal(G, scores, nlu, parser)
 
         # Apply initial evidences
         traversal.apply_initial_evidence(evidences, values)

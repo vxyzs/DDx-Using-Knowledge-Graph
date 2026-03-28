@@ -6,3 +6,5 @@ sentence-transformers>=2.2
 pyvis>=0.3
 openai>=0.27.0
 python-dotenv>=1.0.0
+langchain-openai
+langchain_google_genai

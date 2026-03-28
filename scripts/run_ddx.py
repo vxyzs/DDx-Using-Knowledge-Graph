@@ -1,5 +1,7 @@
 import pickle
 from core.traversal import KG_Traversal
+from core.nlu import DDxGraphNLU
+from core.parser import Parser
 
 def main():
     G = pickle.load(open("./Pickle/kg.pkl", "rb"))
@@ -9,9 +11,14 @@ def main():
 
     user_input = input("Describe your symptoms: ")
 
+    nlu = DDxGraphNLU(G)
+    parser = Parser()
+
     traversal = KG_Traversal(
         G,
         scores,
+        nlu,
+        parser,
         user_input=user_input
     )
 
