@@ -2,6 +2,7 @@ import math
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
 
+
 class KG_Traversal(Parser, DDxGraphNLU):
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
@@ -10,8 +11,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
     ABSENCE_WEIGHT = 0.5
 
     def __init__(self, G, scores, user_input=None):
-        Parser.__init__(self)
-        DDxGraphNLU.__init__(self, G)
+        Parser.__init__(self)  # Initialize the LangChain LLM Pipeline
+        DDxGraphNLU.__init__(self, G)  # Initialize the DDxGraphNLU
 
         self.G = G
         self.scores = scores
@@ -19,7 +20,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
         self.asked = set()
         self.observed_yes = set()
         self.observed_no = set()
-    
+
         if user_input:
             self._parse_initial_query(user_input)
 
@@ -27,7 +28,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
         """
         Parse free-text user input and initialize evidence + scores.
         """
-        evidences, values = self.parse_query(user_input)
+        context = self.retrieve(user_input)
+        evidences, values = self.parse_query(user_input, context)
 
         if not evidences:
             return
@@ -36,11 +38,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
         for e, v in zip(evidences, values):
             print(f"  {e} → {v}")
 
-        self.apply_initial_evidence(
-            evidences=evidences,
-            values=values
-        )
-
+        self.apply_initial_evidence(evidences=evidences, values=values)
 
     # ---------------- UTIL ----------------
     def safe_log(self, p):
@@ -54,10 +52,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
         best_e, best_gain = None, -1.0
 
         max_s = max(self.scores[c] for c in candidate_conditions)
-        post = {
-            c: math.exp(self.scores[c] - max_s)
-            for c in candidate_conditions
-        }
+        post = {c: math.exp(self.scores[c] - max_s) for c in candidate_conditions}
         Z = sum(post.values())
         post = {c: p / Z for c, p in post.items()}
 
@@ -99,8 +94,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
                 if p >= self.ABSENCE_PROB_THRESHOLD:
                     penalty = self.safe_log(1.0 - p)
                     self.scores[c] = self.capped_add(
-                        self.scores[c],
-                        self.ABSENCE_WEIGHT * penalty
+                        self.scores[c], self.ABSENCE_WEIGHT * penalty
                     )
                 self.observed_no.add(evidence)
 
@@ -114,8 +108,7 @@ class KG_Traversal(Parser, DDxGraphNLU):
             for v in chosen_values:
                 stats = self.G.edges[evidence, v].get("cond_stats", {})
                 best_pv = max(
-                    best_pv,
-                    stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
+                    best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
                 )
 
             self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
@@ -198,7 +191,9 @@ class KG_Traversal(Parser, DDxGraphNLU):
 
         for step in range(max_steps):
             # --- A. Rank and Display the current Top Candidates ---
-            ranked = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[:top_k_conditions]
+            ranked = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
+                :top_k_conditions
+            ]
             candidate_conditions = [c for c, _ in ranked]
 
             print(f"\nStep {step + 1} — Current Differential:")
@@ -210,7 +205,8 @@ class KG_Traversal(Parser, DDxGraphNLU):
 
             # --- B. Decide the next Question ---
             evidence = self.get_discriminating_evidence(candidate_conditions)
-            if evidence is None: break
+            if evidence is None:
+                break
 
             # print(f"Selected evidence: {self.G.nodes[evidence]}")
             parent = self.G.nodes[evidence].get("parent", None)
@@ -218,93 +214,71 @@ class KG_Traversal(Parser, DDxGraphNLU):
 
             if parent and parent != evidence and parent not in self.observed_yes:
                 if parent not in self.asked:
-                    print(f"\n🩺 Question: {self.G.nodes[parent]['question_en']}")
-                    print(f"\nEvidence ID: {parent}")
+                    question = self.G.nodes[parent]["question_en"]
+                    print(f"\n🩺 Question: {question}")
+                    ans = input("Your answer: ").strip()
 
-                    ans = input("Answer (yes / no): ").strip().lower()
-                    is_yes = ans in ("yes", "y")
+                    # Feed both the doctor's question and patient's answer to the LLM
+                    context_text = (
+                        f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+                    )
+                    context = self.retrieve(context_text)
+                    ext_evidences, ext_values = self.parse_query(context_text, context)
 
-                    for c in self.scores:
-                        p = self.G.edges[c, parent]["p_e_given_c"] if self.G.has_edge(c, parent) else self.SMOOTH
-
-                        if is_yes:
-                            delta = self.safe_log(p)
-                            self.observed_yes.add(parent)
-                            self.scores[c] = self.capped_add(self.scores[c], delta)
-                        else:
-                            if p >= self.ABSENCE_PROB_THRESHOLD:
-                                penalty = self.safe_log(1.0 - p)
-                                self.scores[c] = self.capped_add(self.scores[c], self.ABSENCE_WEIGHT*penalty)
-                            self.observed_no.add(parent)
+                    if ext_evidences:
+                        self.apply_initial_evidence(ext_evidences, ext_values)
 
                     self.asked.add(parent)
 
-                if parent in self.observed_no: # is asked but is not in observed_yes
+                if parent in self.observed_no:  # is asked but is not in observed_yes
                     continue
                 # if parent is asked and is in observed_yes, we proceed to ask evidence
 
             self.asked.add(evidence)
-            print(f"\n🩺 Question: {self.G.nodes[evidence]['question_en']}")
-            print(f"\nEvidence ID: {evidence}")
-            values = [
-                v for _, v in self.G.out_edges(evidence)
-                if self.G.nodes[v]["type"].startswith("possible")
-            ]
+            question = self.G.nodes[evidence]["question_en"]
 
-            # ---------------- Binary evidence ----------------
-            if not values:
-                ans = input("Answer (yes / no): ").strip().lower()
-                is_yes = ans in ("yes", "y")
+            print(f"\n🩺 Question: {question}")
+            ans = input("Your answer: ").strip()
 
-                for c in self.scores:
-                    p = self.G.edges[c, evidence]["p_e_given_c"] if self.G.has_edge(c, evidence) else self.SMOOTH
+            # Feed both the doctor's question and patient's answer to the LLM
+            context_text = (
+                f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+            )
+            context = self.retrieve(context_text)
+            ext_evidences, ext_values = self.parse_query(context_text, context)
 
-                    if is_yes:
-                        delta = self.safe_log(p)
-                        self.observed_yes.add(evidence)
-                        self.scores[c] = self.capped_add(self.scores[c], delta)
-                    else:
-                        if p >= self.ABSENCE_PROB_THRESHOLD:
-                            penalty = self.safe_log(1.0 - p)
-                            self.scores[c] = self.capped_add(self.scores[c], self.ABSENCE_WEIGHT*penalty)
-                        self.observed_no.add(evidence)
-
-                continue
-
-            choice_text = input()
-            choice_text_with_evidence = self.G.nodes[evidence]['question_en'] + " " + choice_text
-            matches = self._find_best_match(choice_text_with_evidence)
-            print(f"NLU Match: {matches}")
-            if matches:
-                for match in matches:
-                    if match and match['value']:
-                        if isinstance(match['value'], list):
-                            chosen_values = match['value']
-                            print(f"Chosen values: {chosen_values}")
-                            self.observed_yes.add(evidence)
-                            for chosen_value in chosen_values:
-                                
-
-                                for c in self.scores:
-                                    best_pv = self.SMOOTH
-
-                                    stats = self.G.edges[evidence, chosen_value].get("cond_stats", {})
-                                    best_pv = max(best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH))
-
-                                    self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
-                        else:
-                            chosen_value = match['value']
-                            print(f"Chosen value: {chosen_value}")
-                            self.observed_yes.add(evidence)
-                            for c in self.scores:
-                                best_pv = self.SMOOTH
-
-                                stats = self.G.edges[evidence, chosen_value].get("cond_stats", {})
-                                best_pv = max(best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH))
-
-                                self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
-                        continue
-
+            if ext_evidences:
+                self.apply_initial_evidence(ext_evidences, ext_values)
+            step += 1
         print("\n=== FINAL RANKED CONDITIONS ===")
-        for c, s in sorted(self.scores.items(), key=lambda x: x[1], reverse=True):
+        top_candidates = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
+            :top_k_conditions
+        ]
+        for c, s in top_candidates:
             print(f"{c:40s} score={s:.4f}")
+
+        top_conditions_with_scores = {c: s for c, s in top_candidates}
+        cond_evidence_map = {}
+        missing_evidence_map = {}
+
+        for c, _ in top_candidates:
+            supporting = []
+            for e in self.observed_yes:
+                if self.G.has_edge(c, e):
+                    supporting.append(e)
+
+            absent = []
+            for e in self.observed_no:
+                if self.G.has_edge(c, e):
+                    p = self.G.edges[c, e].get("p_e_given_c", self.SMOOTH)
+                    if p >= self.ABSENCE_PROB_THRESHOLD:
+                        absent.append(e)
+
+            cond_evidence_map[c] = supporting
+            missing_evidence_map[c] = absent
+
+        return {
+            "top_conditions_with_scores": top_conditions_with_scores,
+            "cond_evidence_map": cond_evidence_map,
+            "missing_evidence_map": missing_evidence_map,
+        }

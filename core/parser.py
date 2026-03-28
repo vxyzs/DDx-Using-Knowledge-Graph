@@ -1,85 +1,149 @@
 import os
 import json
+from typing import List, Union, Any
 from openai import OpenAI
 from dotenv import load_dotenv
-import re
+from pydantic import BaseModel, Field, SecretStr
+from core.nlu import DDxGraphNLU
+import pickle
+
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
 
 load_dotenv()
 
 with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
     release_evidences = json.load(f)
 
+class PatientEvidences(BaseModel):
+    evidences: List[str] = Field(
+        description=(
+            "List of extracted evidence IDs. "
+            "Note: Only include mentioned evidences. If an evidence with data type 'M' is present, "
+            "you MUST also include its parent evidence ID in this list."
+        )
+    )
+    values: List[Union[str, List[str]]] = Field(
+        description=(
+            "Corresponding values for the evidences. "
+            "- For Boolean ('B') or absent evidences: use 'YES' or 'NO'. "
+            "- For categorical/numerical: use a list of exact mapped IDs (e.g., [['E_55_@_V_125', 'E_55_@_V_29']]]). "
+            "- For multiple values: include all mapped IDs in the list."
+        )
+    )
+
 class Parser:
-    def __init__(self, model_name="gpt-oss:120b"):
+    def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
         self.model_name = model_name
-
-    def parser(self, text):
-        prompt = f'''
-        You are a parser that extracts structured information from text.
-        Important Notes: 
-        1. If an evidence is not mentioned in the text, do not include it in the output.
-        2. Evidences with data type "B"(Boolean) should have values "YES" or "NO".
-        3. Evidences with categorical values should have values as a list of ids. For example, if the evidence is "E_55" and the mentioned value is "eye", and in release_evidences.json "eye" maps to "V_125", then the value should be ["E_55_@_V_125"].
-        4. Similarly for evidences with numerical values, provide the value as a list containing the numerical value as a string. For example, if the evidence is "E_59" and the value maps to a numerical value "5" (1-10), then the value should be ["E_59_@_5"].
-        5. If multiple values are mentioned for a single evidence, include all relevant ids in the list.
-        6. If evidence with data type "M" is present, then also include its parent evidence(code_question) with value "YES".
-        7. If evidence is mentioned as absent, set its value to "NO". For example, if the text says "no fever", then for evidence "E_201" (fever), set value to "NO".
-        8. Ensure the output is a valid JSON.
-        9. The output JSON should have two keys: "evidences" and "values". "evidences" is a list of evidence ids, and "values" is a list of corresponding values.
-
-        For the below patient text, map the evidences and values ids from release_evidences.json file. 
-
-        Patient text: "{text}"
-
-        release_evidences.json: {release_evidences}
-        '''
-
-        client = OpenAI(
+        
+        # --- 2. Initialize the LLM ---
+        self.llm = ChatOpenAI(
+            model=self.model_name,
+            api_key=SecretStr(os.getenv("HF_TOKEN") or ""),
             base_url="https://router.huggingface.co/v1",
-            api_key=os.getenv("HF_TOKEN")
+            temperature=0.0 # Low temperature for more reliable factual extraction
+        )
+        
+        # --- 3. Initialize the Parser ---
+        self.output_parser = PydanticOutputParser(pydantic_object=PatientEvidences)
+
+    def parser(self, text: str, context: Union[str, List[Any], dict]) -> PatientEvidences:
+        # --- 4. Define the Prompt Template ---
+        prompt = PromptTemplate(
+            template='''
+            You are a medical parser that extracts structured information from patient text.
+            
+            Important Notes: 
+            1. If an evidence is not mentioned in the text, do not include it.
+            2. Evidences with data type "B" (Boolean) should have values "YES" or "NO".
+            3. Evidences with categorical values should have values as a list of ids. Example: if evidence is "E_55" (eye) and value is "V_125", output ["E_55_@_V_125"].
+            4. Similarly, for numerical values, provide the value as a list containing the numerical value string. Example: ["E_59_@_5"].
+            5. If multiple values are mentioned for a single evidence, include all relevant ids in the list.
+            6. If evidence with data type "M" is present, also include its parent evidence (code_question) with value "YES".
+            7. If evidence is explicitly mentioned as absent, set its value to "NO" (e.g., "no fever" -> evidence "E_201" gets value "NO").
+
+            Patient text: "{text}"
+
+            Knowledge Graph Evidences Subset: {context}
+            
+            {format_instructions}
+            ''',
+            input_variables=["text", "context"],
+            partial_variables={"format_instructions": self.output_parser.get_format_instructions()},
         )
 
-        completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-        )
+        try:
+            # Ensure we pass a JSON string into the prompt (the LLM expects a serialized structure)
+            context_json = context if isinstance(context, str) else json.dumps(context)
 
-        print(completion.choices[0].message.content)
-
-        try:       
-            content = completion.choices[0].message.content
-            if content is None:
-                print("Error: API returned empty content")
-                return None
-            clean = re.sub(r"^```json\s*|\s*```$", "", content.strip(), flags=re.MULTILINE)
-            parsed_data = json.loads(clean)
+            prompt_value = prompt.invoke({
+                "text": text,
+                "context": context_json,
+            })
+            
+            # 1. Get raw string from LLM
+            llm_response = self.llm.invoke(prompt_value)
+            
+            # --- PRINT 1: BEFORE PYDANTIC (Raw LLM Text) ---
+            print("\n" + "="*50)
+            print("1. BEFORE PYDANTIC (Raw LLM Output)")
+            print("="*50)
+            print(llm_response.content)
+            
+            # 2. Parse string into Pydantic object
+            parsed_result = self.output_parser.invoke(llm_response)
+            
+            # --- PRINT 2: AFTER PYDANTIC (Structured Object) ---
+            print("\n" + "="*50)
+            print("2. AFTER PYDANTIC (Pydantic Object Representation)")
+            print("="*50)
+            print(repr(parsed_result))
+            print("\nAs Dictionary:")
+            print(json.dumps(parsed_result.model_dump(), indent=2))
+            print("="*50 + "\n")
+            
+            return parsed_result
+            
         except Exception as e:
-            print(f"Error during decoding: {e}")
-            return None
-
-
-        return parsed_data
+            print(f"Error during LLM decoding/parsing: {e}")
+            return PatientEvidences(evidences=[], values=[])
          
-    
-    def parse_query(self, text):
-        parsed_data = self.parser(text)
+    def parse_query(self, text: str, context: Union[str, List[Any], dict]):
+        """Parse a user query with an optional context payload.
+
+        Args:
+            text: The raw user input string.
+            context: A JSON string or Python object (list/dict) representing relevant evidences.
+                     If a JSON string is passed (as returned by `nlu.retrieve`), it will be
+                     used directly. If a Python object is passed, it will be serialized.
+        """
+        parsed_data = self.parser(text, context)
         if parsed_data is None:
             return [], []
 
-        evidences = parsed_data.get("evidences", [])
-        values = parsed_data.get("values", [])
-
-        return evidences, values
+        return parsed_data.evidences, parsed_data.values
   
-
 if __name__ == "__main__":
     parser = Parser()
+    G = pickle.load(open("Pickle/kg.pkl", "rb"))
+    nlu = DDxGraphNLU(G)
+
     sample_text = "For the past couple of weeks, I’ve been having sudden episodes of very intense pain on one side of my head, mainly around my eye and temple. The pain feels sharp and unbearable, and when it happens my eye starts watering and my nose feels blocked on the same side. I can’t stay still during these attacks and feel extremely restless. These episodes happen multiple times and often around the same time of day, then completely go away in between.No fever and cough."
-    evidences, values = parser.parse_query(sample_text)
+    context = nlu.retrieve(sample_text)
+
+    print("\n" + "="*50)
+    print("1. RETRIEVED CONTEXT FROM NLU")
+    print("="*50)
+    print(context)
+    print("="*50 + "\n") 
+    evidences, values = parser.parse_query(sample_text, context)
+    
+    # --- PRINT 3: FINAL OUTPUTS ---
+    print("\n" + "="*50)
+    print("3. FINAL EXTRACTED LISTS")
+    print("="*50)
     print("Evidences:", evidences)
     print("Values:", values)
+    print("="*50 + "\n")

@@ -44,7 +44,7 @@ class TestOnlyTraversal:
                 continue
             eid, vid = m.group(1), m.group(2)
             if eid == evidence and vid in shown_values:
-                chosen.append(vid)
+                chosen.append(ev)
         return chosen
 
     # ---------------- DISCRIMINATING EVIDENCE ----------------
@@ -100,7 +100,9 @@ class TestOnlyTraversal:
                 observed_yes.add(ev)
 
         # Traversal loop
+        steps_taken = 0
         for _ in range(max_steps):
+            steps_taken += 1
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             candidate_conditions = [c for c, _ in ranked[:10]]
 
@@ -197,7 +199,5 @@ class TestOnlyTraversal:
                 scores[c] = self.capped_add(scores[c], self.safe_log(best_pv))
 
         # ---------------- Evaluation ----------------
-        final_ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        top_k = {c for c, _ in final_ranked[:k]}
-        return pathology in top_k
+        return steps_taken
     
