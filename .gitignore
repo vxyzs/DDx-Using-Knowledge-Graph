@@ -1,4 +1,14 @@
-Data/ddxplus/
-Pickle/
-.venv
+# Virtual environment
+.venv/
+
+# Environment variables
 .env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Data
+Data/ddxplus

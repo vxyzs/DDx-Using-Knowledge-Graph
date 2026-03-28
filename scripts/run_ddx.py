@@ -1,21 +1,81 @@
 import pickle
+from functools import lru_cache
 from core.traversal import KG_Traversal
+from core.nlu import DDxGraphNLU
+from core.parser import Parser
+
+
+@lru_cache(maxsize=1)
+def load_graph(path="./Pickle/kg.pkl"):
+    """
+    Loads the knowledge graph once and caches it.
+    Prevents re-loading if called multiple times.
+    """
+    with open(path, "rb") as f:
+        G = pickle.load(f)
+    return G
+
+
+def initialize_scores(G):
+    """
+    Efficiently initialize condition node scores.
+    Avoids repeated dictionary lookups.
+    """
+    condition_nodes = [
+        node
+        for node, data in G.nodes(data=True)
+        if data.get("type") == "condition"
+    ]
+    return dict.fromkeys(condition_nodes, 0.0)
+
 
 def main():
-    G = pickle.load(open("./Pickle/kg.pkl", "rb"))
-    # Further processing...
+    try:
+        print("Loading knowledge graph...")
+        G = load_graph()
+    except FileNotFoundError:
+        print("Knowledge Graph pickle file not found. Ensure './Pickle/kg.pkl' exists.")
+        return
 
-    scores = {c: 0.0 for c in G.nodes if G.nodes[c]["type"] == "condition"}
+    scores = initialize_scores(G)
 
     user_input = input("Describe your symptoms: ")
+
+    nlu = DDxGraphNLU(G)
+    parser = Parser()
 
     traversal = KG_Traversal(
         G,
         scores,
+        nlu,
+        parser,
         user_input=user_input
     )
 
-    traversal.run()
+    result = traversal.run()
+    top_conditions_with_scores = result["top_conditions_with_scores"]
+    cond_evidence_map = result["cond_evidence_map"]
+    missing_evidence_map = result["missing_evidence_map"]
+
+    print("\n=== TOP CONDITIONS WITH SCORES ===")
+    for c, s in top_conditions_with_scores.items():
+        print(f"{c:40s} score={s:.4f}")
+    
+    print("\n=== EVIDENCE FOR TOP CONDITIONS ===")
+    for c in top_conditions_with_scores:
+        evidence = cond_evidence_map.get(c, [])
+        print(f"\nCondition: {c}")
+        print("Evidence:")
+        for e in evidence:
+            print(f"  - {e}")
+    
+    print("\n=== MISSING EVIDENCE FOR TOP CONDITIONS ===")
+    for c in top_conditions_with_scores:
+        missing_evidence = missing_evidence_map.get(c, [])
+        print(f"\nCondition: {c}")
+        print("Missing Evidence:")
+        for e in missing_evidence:
+            print(f"  - {e}")
 
 if __name__ == "__main__":
     main()
