@@ -4,6 +4,7 @@ import pickle
 import pandas as pd
 import random
 from collections import defaultdict
+import os  # <-- ADDED
 
 from core.test_only_traversal import TestOnlyTraversal
 from core.traversal import KG_Traversal
@@ -32,8 +33,8 @@ with open("./Data/ddxplus/release_evidences.json", "r") as f:
 
 print("Loading test patients...")
 df = pd.read_csv(DATA_PATH)
-df = df[df["PATHOLOGY"] == "URTI"]  # TEMP: filter for easier debugging
-df = df.sample(n=min(len(df), N_SAMPLES), random_state=RANDOM_SEED).reset_index(drop=True)
+# df = df[df["PATHOLOGY"] == "URTI"]
+# df = df.sample(n=N_SAMPLES, random_state=RANDOM_SEED).reset_index(drop=True)
 
 print(f"Loaded {len(df)} patients.")
 
@@ -172,17 +173,25 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
     # -------- Aggregate --------
     total = results["total"]
 
+    if total == 0:
+        print("No samples to evaluate.")
+        return results
+
     print("\n--- RESULTS ---")
     for k in TOP_KS:
         acc = results["topk_hits"][k] / total
         print(f"Top-{k} Accuracy: {acc:.4f}")
 
-    print(f"MRR: {results['mrr'] / total:.4f}")
-    print(f"Mean Rank: {results['mean_rank'] / total:.4f}")
+    mrr = results["mrr"] / total
+    mean_rank = results["mean_rank"] / total
+    avg_steps = results["steps"] / total
 
-    avg_gt_score = sum(results["gt_scores"]) / total if total > 0 else 0.0
-    avg_top1_score = sum(results["top1_scores"]) / total if total > 0 else 0.0
-    avg_score_gap = sum(results["score_gaps"]) / total if total > 0 else 0.0
+    print(f"MRR: {mrr:.4f}")
+    print(f"Mean Rank: {mean_rank:.4f}")
+
+    avg_gt_score = sum(results["gt_scores"]) / total
+    avg_top1_score = sum(results["top1_scores"]) / total
+    avg_score_gap = sum(results["score_gaps"]) / total
 
     print("\n--- SCORE ANALYSIS ---")
     print(f"Avg GT Score: {avg_gt_score:.4f}")
@@ -190,11 +199,21 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
     print(f"Avg Score Gap: {avg_score_gap:.4f}")
 
     print("\n--- SYSTEM ---")
-    print(f"Avg Steps: {results['steps'] / total:.2f}")
+    print(f"Avg Steps: {avg_steps:.2f}")
 
     print("\n--- RANK DISTRIBUTION ---")
     for r in sorted(results["rank_histogram"].keys()):
         print(f"Rank {r}: {results['rank_histogram'][r]}")
+
+    # -------- STORE NORMALIZED VALUES (CRITICAL FIX) --------
+    results["mrr"] = mrr
+    results["mean_rank"] = mean_rank
+    results["steps"] = avg_steps
+
+    # Optional but useful
+    results["topk_accuracy"] = {
+        k: results["topk_hits"][k] / total for k in TOP_KS
+    }
 
     return results
 
@@ -221,6 +240,91 @@ def filter_difficult_cases(df):
     return pd.DataFrame(hard_cases)
 
 
+# ---------------- NEW: PER-PATHOLOGY EVALUATION ----------------
+
+
+def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_results.json"):
+    """
+    Scenario #4 (extended):
+    For each pathology:
+        - Full Info
+        - Partial Info
+        - Hard Cases (subset)
+    """
+
+    all_results = {}
+
+    unique_pathologies = df["PATHOLOGY"].unique()
+    print(f"\nFound {len(unique_pathologies)} unique pathologies")
+
+    for pathology_name in unique_pathologies:
+        print(f"\n==============================")
+        print(f"Processing pathology: {pathology_name}")
+        print(f"==============================")
+
+        df_path = df[df["PATHOLOGY"] == pathology_name]
+
+        sample_size = min(1000, len(df_path))
+        df_sample = df_path.sample(n=sample_size, random_state=RANDOM_SEED)
+
+        pathology_results = {}
+
+        # ---------------- FULL INFO ----------------
+        full_results = evaluate_scenario(
+            df_sample,
+            scenario_name=f"{pathology_name} - Full Info",
+            use_partial=False
+        )
+        full_results["rank_histogram"] = dict(full_results["rank_histogram"])
+        pathology_results["full_info"] = full_results
+
+        # ---------------- PARTIAL INFO ----------------
+        partial_results = evaluate_scenario(
+            df_sample,
+            scenario_name=f"{pathology_name} - Partial Info",
+            use_partial=True
+        )
+        partial_results["rank_histogram"] = dict(partial_results["rank_histogram"])
+        pathology_results["partial_info"] = partial_results
+
+        # ---------------- HARD CASES ----------------
+        hard_df = filter_difficult_cases(df_sample)
+
+        if len(hard_df) > 0:
+            print(f"\nHard cases found: {len(hard_df)}")
+
+            hard_results = evaluate_scenario(
+                hard_df,
+                scenario_name=f"{pathology_name} - Hard Cases",
+                use_partial=True
+            )
+            hard_results["rank_histogram"] = dict(hard_results["rank_histogram"])
+
+            pathology_results["hard_cases"] = {
+                "num_samples": len(hard_df),
+                "metrics": hard_results
+            }
+        else:
+            print("No hard cases found.")
+            pathology_results["hard_cases"] = {
+                "num_samples": 0,
+                "metrics": None
+            }
+
+        # ---------------- STORE ----------------
+        all_results[pathology_name] = {
+            "num_samples": sample_size,
+            "scenarios": pathology_results
+        }
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(all_results, f, indent=4)
+
+    print(f"\nSaved results to {output_path}")
+
+
 # ---------------- RUN ALL SCENARIOS ----------------
 
 if __name__ == "__main__":
@@ -230,12 +334,15 @@ if __name__ == "__main__":
     # evaluate_scenario(df, "Full Information", use_partial=False)
 
     # 2. PARTIAL INFO
-    evaluate_scenario(df, "Partial Information (50%)", use_partial=True)
+    # evaluate_scenario(df, "Partial Information (50%)", use_partial=True)
 
-    # 3. HARD CASES
-    hard_df = filter_difficult_cases(df)
+    # # 3. HARD CASES
+    # hard_df = filter_difficult_cases(df)
 
-    if len(hard_df) > 0:
-        evaluate_scenario(hard_df, "Difficult Cases", use_partial=True)
-    else:
-        print("\nNo difficult cases found in sample.")
+    # if len(hard_df) > 0:
+    #     evaluate_scenario(hard_df, "Difficult Cases", use_partial=True)
+    # else:
+    #     print("\nNo difficult cases found in sample.")
+
+    # 4. PER-PATHOLOGY JSON GENERATION
+    evaluate_per_pathology_and_save(df)
