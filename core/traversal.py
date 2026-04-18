@@ -251,11 +251,24 @@ class KG_Traversal:
                 self.apply_initial_evidence(ext_evidences, ext_values)
             step += 1
         print("\n=== FINAL RANKED CONDITIONS ===")
+
+        # ---------------- Convert scores to probabilities ----------------
+        if self.scores:
+            max_score = max(self.scores.values())
+            exp_scores = {c: math.exp(s - max_score) for c, s in self.scores.items()}
+            sum_exp = sum(exp_scores.values())
+            if sum_exp > 0:
+                for c in self.scores:
+                    self.scores[c] = exp_scores[c] / sum_exp
+            else:
+                for c in self.scores:
+                    self.scores[c] = 0.0
+
         top_candidates = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
             :top_k_conditions
         ]
         for c, s in top_candidates:
-            print(f"{c:40s} score={s:.4f}")
+            print(f"{c:40s} prob={s:.4f}")
 
         top_conditions_with_scores = {c: s for c, s in top_candidates}
         cond_evidence_map = {}

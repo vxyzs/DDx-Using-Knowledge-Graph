@@ -35,7 +35,7 @@ class PatientEvidences(BaseModel):
     )
 
 class Parser:
-    def __init__(self, model_name="gpt-oss:120b"):
+    def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
         self.model_name = model_name
         
         # --- 2. Initialize the LLM ---
