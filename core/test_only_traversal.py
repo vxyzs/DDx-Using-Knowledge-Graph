@@ -198,6 +198,17 @@ class TestOnlyTraversal:
                     )
                 scores[c] = self.capped_add(scores[c], self.safe_log(best_pv))
 
+        # ---------------- Convert scores to probabilities ----------------
+        if scores:
+            max_score = max(scores.values())
+            exp_scores = {c: math.exp(s - max_score) for c, s in scores.items()}
+            sum_exp = sum(exp_scores.values())
+            if sum_exp > 0:
+                for c in scores:
+                    scores[c] = exp_scores[c] / sum_exp
+            else:
+                for c in scores:
+                    scores[c] = 0.0
+
         # ---------------- Evaluation ----------------
-        return steps_taken
-    
+        return steps_taken    

@@ -19,9 +19,9 @@ N_SAMPLES = 10000
 RANDOM_SEED = 42
 
 TOP_KS = [1, 3, 5]
-MAX_STEPS = 5
+MAX_STEPS = 7
 
-PARTIAL_RATIO = 0.60  #60% evidences
+PARTIAL_RATIO = 0.50  #50% evidences
 
 # ---------------- LOAD ----------------
 
@@ -70,10 +70,22 @@ def parse_full_evidences(row):
     return evidences
 
 
-def sample_partial_evidences(all_evidences):
-    """Random 50% sampling"""
+def sample_partial_evidences(all_evidences, pathology, G):
+    """Select the top k evidences most likely for the given pathology"""
     k = max(1, int(len(all_evidences) * PARTIAL_RATIO))
-    return random.sample(all_evidences, k)
+    
+    scored_evidences = []
+    for ev in all_evidences:
+        if "_@_" in ev:
+            eid, vid = ev.split("_@_")
+            stats = G.edges[eid, vid].get("cond_stats", {}) if G.has_edge(eid, vid) else {}
+            p = stats.get(pathology, {}).get("p_v_given_e_c", 1e-6)
+        else:
+            p = G.edges[pathology, ev]["p_e_given_c"] if G.has_edge(pathology, ev) else 1e-6
+        scored_evidences.append((ev, p))
+        
+    scored_evidences.sort(key=lambda x: x[1], reverse=True)
+    return [ev for ev, p in scored_evidences[:k]]
 
 
 def parse_evidence_format(evid_list):
@@ -114,6 +126,7 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
         "top1_scores": [],
         "score_gaps": [],
         "rank_histogram": defaultdict(int),
+        "gt_prob_thresholds": {0.5: 0, 0.6: 0, 0.7: 0},
         "steps": 0,
         "total": 0,
     }
@@ -125,7 +138,7 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
         all_evidences = parse_full_evidences(row)
 
         if use_partial:
-            evid_list = sample_partial_evidences(all_evidences)
+            evid_list = sample_partial_evidences(all_evidences, pathology, G)
         else:
             evid_list = all_evidences
 
@@ -164,6 +177,10 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
         results["top1_scores"].append(top1_score)
         results["score_gaps"].append(top1_score - gt_score)
 
+        for t in [0.5, 0.6, 0.7]:
+            if gt_score >= t:
+                results["gt_prob_thresholds"][t] += 1
+
         for k in TOP_KS:
             if rank <= k:
                 results["topk_hits"][k] += 1
@@ -193,10 +210,17 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
     avg_top1_score = sum(results["top1_scores"]) / total
     avg_score_gap = sum(results["score_gaps"]) / total
 
-    print("\n--- SCORE ANALYSIS ---")
-    print(f"Avg GT Score: {avg_gt_score:.4f}")
-    print(f"Avg Top-1 Score: {avg_top1_score:.4f}")
-    print(f"Avg Score Gap: {avg_score_gap:.4f}")
+    print("\n--- PROBABILITY ANALYSIS ---")
+    print(f"Avg GT Prob: {avg_gt_score:.4f}")
+    print(f"Avg Top-1 Prob: {avg_top1_score:.4f}")
+    print(f"Avg Prob Gap: {avg_score_gap:.4f}")
+
+    print("\n--- CONFIDENCE METRICS ---")
+    for t in [0.5, 0.6, 0.7]:
+        acc_at_t = results["gt_prob_thresholds"][t] / total
+        print(f"GT Prob >= {t}: {acc_at_t:.4f}")
+        
+    results["gt_prob_thresholds"] = {t: results["gt_prob_thresholds"][t] / total for t in [0.5, 0.6, 0.7]}
 
     print("\n--- SYSTEM ---")
     print(f"Avg Steps: {avg_steps:.2f}")
