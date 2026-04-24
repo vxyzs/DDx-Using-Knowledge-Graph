@@ -5,8 +5,6 @@ class TestOnlyTraversal:
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
-    ABSENCE_PROB_THRESHOLD = 0.5
-    ABSENCE_WEIGHT = 0.5
 
     VALUE_PATTERN = re.compile(r'^(E_\d+)_@_(V_\d+|\d+)$')
 
@@ -130,14 +128,14 @@ class TestOnlyTraversal:
                         if is_yes:
                             scores[c] = self.capped_add(scores[c], self.safe_log(p))
                         else:
-                            if p >= self.ABSENCE_PROB_THRESHOLD:
-                                scores[c] = self.capped_add(
-                                    scores[c],
-                                    self.ABSENCE_WEIGHT * self.safe_log(1 - p)
-                                )
+                            scores[c] = self.capped_add(
+                                scores[c],
+                                self.safe_log(1 - p)
+                            )
                     asked.add(parent)
 
                 if parent in observed_no:
+                    asked.add(evidence)
                     continue
 
             asked.add(evidence)
@@ -159,11 +157,10 @@ class TestOnlyTraversal:
                     if is_yes:
                         scores[c] = self.capped_add(scores[c], self.safe_log(p))
                     else:
-                        if p >= self.ABSENCE_PROB_THRESHOLD:
-                            scores[c] = self.capped_add(
-                                scores[c],
-                                self.ABSENCE_WEIGHT * self.safe_log(1 - p)
-                            )
+                        scores[c] = self.capped_add(
+                            scores[c],
+                            self.safe_log(1 - p)
+                        )
                 continue
 
             # ---------------- Value-based evidence ----------------
@@ -180,23 +177,27 @@ class TestOnlyTraversal:
                         if self.G.has_edge(c, evidence)
                         else self.SMOOTH
                     )
-                    if p >= self.ABSENCE_PROB_THRESHOLD:
-                        scores[c] = self.capped_add(
-                            scores[c],
-                            self.ABSENCE_WEIGHT * self.safe_log(1 - p)
-                        )
+                    scores[c] = self.capped_add(
+                        scores[c],
+                        self.safe_log(1 - p)
+                    )
                 continue
 
             observed_yes.add(evidence)
             for c in scores:
                 best_pv = self.SMOOTH
+                p_e = (
+                    self.G.edges[c, evidence]["p_e_given_c"]
+                    if self.G.has_edge(c, evidence)
+                    else self.SMOOTH
+                )
                 for v in chosen_values:
-                    stats = self.G.edges[evidence, v].get("cond_stats", {})
+                    stats = self.G.edges[evidence, v].get("cond_stats", {}) if self.G.has_edge(evidence, v) else {}
                     best_pv = max(
                         best_pv,
                         stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
                     )
-                scores[c] = self.capped_add(scores[c], self.safe_log(best_pv))
+                scores[c] = self.capped_add(scores[c], self.safe_log(p_e) + self.safe_log(best_pv))
 
         # ---------------- Convert scores to probabilities ----------------
         if scores:

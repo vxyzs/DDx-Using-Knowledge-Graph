@@ -177,9 +177,7 @@ else:
                 absent = []
                 for e in t.observed_no:
                     if t.G.has_edge(c, e):
-                        p = t.G.edges[c, e].get("p_e_given_c", t.SMOOTH)
-                        if p >= t.ABSENCE_PROB_THRESHOLD:
-                            absent.append(e)
+                        absent.append(e)
                 if absent:
                     st.write(f"*{c}:*")
                     for ev in absent:

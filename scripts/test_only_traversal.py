@@ -71,21 +71,18 @@ def parse_full_evidences(row):
 
 
 def sample_partial_evidences(all_evidences, pathology, G):
-    """Select the top k evidences most likely for the given pathology"""
+    """Select k random evidences to simulate partial information."""
     k = max(1, int(len(all_evidences) * PARTIAL_RATIO))
     
-    scored_evidences = []
-    for ev in all_evidences:
-        if "_@_" in ev:
-            eid, vid = ev.split("_@_")
-            stats = G.edges[eid, vid].get("cond_stats", {}) if G.has_edge(eid, vid) else {}
-            p = stats.get(pathology, {}).get("p_v_given_e_c", 1e-6)
-        else:
-            p = G.edges[pathology, ev]["p_e_given_c"] if G.has_edge(pathology, ev) else 1e-6
-        scored_evidences.append((ev, p))
+    if len(all_evidences) <= k:
+        return all_evidences
         
-    scored_evidences.sort(key=lambda x: x[1], reverse=True)
-    return [ev for ev, p in scored_evidences[:k]]
+    # Keep the initial evidence at index 0, and randomly sample the rest
+    initial = all_evidences[0]
+    rest = all_evidences[1:]
+    sampled_rest = random.sample(rest, k - 1)
+    
+    return [initial] + sampled_rest
 
 
 def parse_evidence_format(evid_list):
@@ -354,19 +351,6 @@ def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_res
 if __name__ == "__main__":
     random.seed(RANDOM_SEED)
 
-    # 1. FULL INFO
-    # evaluate_scenario(df, "Full Information", use_partial=False)
-
-    # 2. PARTIAL INFO
-    # evaluate_scenario(df, "Partial Information (50%)", use_partial=True)
-
-    # # 3. HARD CASES
-    # hard_df = filter_difficult_cases(df)
-
-    # if len(hard_df) > 0:
-    #     evaluate_scenario(hard_df, "Difficult Cases", use_partial=True)
-    # else:
-    #     print("\nNo difficult cases found in sample.")
-
-    # 4. PER-PATHOLOGY JSON GENERATION
+    # PER-PATHOLOGY JSON GENERATION
+    print("\nStarting exhaustive per-pathology evaluation. This will take a while...")
     evaluate_per_pathology_and_save(df)

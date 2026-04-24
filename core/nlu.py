@@ -59,6 +59,8 @@ class DDxGraphNLU:
         # We prepare a list to hold the ID and Embedding for every Evidence node.
         self.evidence_ids = []
         embeddings_list = []
+        self.val_matrices = {}
+        self.val_ids_dict = {}
 
         # print("Loading embeddings from Graph Evidence Nodes...")
         count = 0
@@ -76,12 +78,25 @@ class DDxGraphNLU:
                     self.evidence_ids.append(node)
                     count += 1
                 else:
-                    # Fallback: If the graph builder forgot to embed this node,
-                    # we do it now on-the-fly (slower startup).
                     txt = f"{data.get('question_en', '')} {data.get('question_fr', '')}"
                     emb = self.model.encode(txt)
                     embeddings_list.append(emb)
                     self.evidence_ids.append(node)
+                
+                # OPTIMIZATION: Pre-stack value matrices for categorical/multi-choice evidences
+                dtype = data.get("data_type", "B")
+                if dtype in ["M", "C"]:
+                    val_nodes = [v for _, v in self.G.out_edges(node) if self.G.nodes[v].get("type", "").startswith("possible")]
+                    val_ids = []
+                    val_embs = []
+                    for v in val_nodes:
+                        v_data = self.G.nodes[v]
+                        if "embedding" in v_data:
+                            val_ids.append(v)
+                            val_embs.append(np.array(v_data["embedding"]))
+                    if val_embs:
+                        self.val_matrices[node] = np.vstack(val_embs)
+                        self.val_ids_dict[node] = val_ids
 
         # Convert list of vectors into a 2D Numpy Matrix for vectorized cosine_similarity
         if count > 0:
@@ -119,18 +134,12 @@ class DDxGraphNLU:
             # if len(chunk) < 3: continue
             print(f" -> Chunk {i+1}: '{chunk}'")
 
-            # --- STEP 2: NEGATION CHECK ---
-            # Simple heuristic to see if the chunk contains negation words.
-            # If true, we flag the result so the Diagnosis Engine knows to treat it as "Absent".
-            is_negated = any(n in chunk for n in ["no ", "not ", "don't ", "never ", "without "])
-
             # --- STEP 3: SEMANTIC SEARCH ---
             # Run the core matching logic on this specific chunk
             matches = self._find_best_match(chunk)
 
             if matches:
                 for match in matches:
-                    if is_negated: match['negated'] = True
                     all_findings.append(match)
 
         evidences = []
@@ -139,13 +148,10 @@ class DDxGraphNLU:
 
         for res in all_findings:
             evidences.append(res["eid"])
-            status = "NO" if res.get("negated") else "YES"
-            if res["value"] and status == "YES":
-                # match = pattern.match(res['value'])
-                # if match:
+            if res["value"]:
                 values.append(res["value"])
             else:
-                values.append(status)
+                values.append("YES")
 
         return all_findings, evidences, values
 
@@ -180,31 +186,19 @@ class DDxGraphNLU:
                 # --- STAGE 2: VALUE CHECK (The Fix) ---
                 # Check values BEFORE applying the threshold filter.
                 # This allows low-scoring questions to be saved by high-scoring answers.
-                if dtype in ["M", "C"]:
-                    val_nodes = [v for _, v in self.G.out_edges(eid)
-                                if self.G.nodes[v].get("type", "").startswith("possible")]
+                if dtype in ["M", "C"] and eid in self.val_matrices:
+                    val_matrix = self.val_matrices[eid]
+                    val_ids = self.val_ids_dict[eid]
+                    v_scores = cosine_similarity(query_vec, val_matrix)[0]
+                    for i, vs in enumerate(v_scores): 
+                        # BOOST SCORE if value is better
+                        if vs > current_candidate['score']:
+                            current_candidate['score'] = vs
+                            current_candidate['match_type'] = 'value_match'
 
-                    if val_nodes:
-                        val_ids = []
-                        val_embs = []
-                        for v in val_nodes:
-                            v_data = self.G.nodes[v]
-                            if "embedding" in v_data:
-                                val_ids.append(v)
-                                val_embs.append(np.array(v_data["embedding"]))
-
-                        if val_embs:
-                            val_matrix = np.vstack(val_embs)
-                            v_scores = cosine_similarity(query_vec, val_matrix)[0]
-                            for i, vs in enumerate(v_scores): 
-                                # BOOST SCORE if value is better
-                                if vs > current_candidate['score']:
-                                    current_candidate['score'] = vs
-                                    current_candidate['match_type'] = 'value_match'
-
-                                    # Only lock in the value if it's confident enough
-                                    if vs >= THRESH_VALUE:
-                                        current_candidate['value'].append(val_ids[i])
+                            # Only lock in the value if it's confident enough
+                            if vs >= THRESH_VALUE:
+                                current_candidate['value'].append(val_ids[i])
 
                 # --- LATE FILTERING ---
                 # NOW we check if the (potentially boosted) score meets the threshold

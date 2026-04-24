@@ -7,8 +7,6 @@ class KG_Traversal:
     # ---------------- CONFIG ----------------
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
-    ABSENCE_PROB_THRESHOLD = 0.5
-    ABSENCE_WEIGHT = 0.5
 
     def __init__(self, G, scores, nlu, parser, user_input=None):
         self.nlu = nlu
@@ -91,11 +89,7 @@ class KG_Traversal:
                 self.scores[c] = self.capped_add(self.scores[c], self.safe_log(p))
                 self.observed_yes.add(evidence)
             else:
-                if p >= self.ABSENCE_PROB_THRESHOLD:
-                    penalty = self.safe_log(1.0 - p)
-                    self.scores[c] = self.capped_add(
-                        self.scores[c], self.ABSENCE_WEIGHT * penalty
-                    )
+                self.scores[c] = self.capped_add(self.scores[c], self.safe_log(1.0 - p))
                 self.observed_no.add(evidence)
 
         self.asked.add(evidence)
@@ -105,13 +99,18 @@ class KG_Traversal:
 
         for c in self.scores:
             best_pv = self.SMOOTH
+            p_e = (
+                self.G.edges[c, evidence]["p_e_given_c"]
+                if self.G.has_edge(c, evidence)
+                else self.SMOOTH
+            )
             for v in chosen_values:
-                stats = self.G.edges[evidence, v].get("cond_stats", {})
+                stats = self.G.edges[evidence, v].get("cond_stats", {}) if self.G.has_edge(evidence, v) else {}
                 best_pv = max(
                     best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
                 )
 
-            self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
+            self.scores[c] = self.capped_add(self.scores[c], self.safe_log(p_e) + self.safe_log(best_pv))
 
         self.asked.add(evidence)
 
@@ -133,9 +132,14 @@ class KG_Traversal:
             if val not in ("YES", "NO"):
                 for v in val:
                     for c in self.scores:
-                        stats = self.G.edges[evid, v].get("cond_stats", {})
+                        p_e = (
+                            self.G.edges[c, evid]["p_e_given_c"]
+                            if self.G.has_edge(c, evid)
+                            else self.SMOOTH
+                        )
+                        stats = self.G.edges[evid, v].get("cond_stats", {}) if self.G.has_edge(evid, v) else {}
                         p = stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
-                        self.scores[c] += self.safe_log(p)
+                        self.scores[c] += self.safe_log(p_e) + self.safe_log(p)
             else:
                 self.apply_binary_answer(evid, val == "YES")
 
@@ -231,6 +235,7 @@ class KG_Traversal:
                     self.asked.add(parent)
 
                 if parent in self.observed_no:  # is asked but is not in observed_yes
+                    self.asked.add(evidence)
                     continue
                 # if parent is asked and is in observed_yes, we proceed to ask evidence
 
@@ -283,9 +288,7 @@ class KG_Traversal:
             absent = []
             for e in self.observed_no:
                 if self.G.has_edge(c, e):
-                    p = self.G.edges[c, e].get("p_e_given_c", self.SMOOTH)
-                    if p >= self.ABSENCE_PROB_THRESHOLD:
-                        absent.append(e)
+                    absent.append(e)
 
             cond_evidence_map[c] = supporting
             missing_evidence_map[c] = absent
