@@ -8,3 +8,4 @@ openai>=0.27.0
 python-dotenv>=1.0.0
 langchain-openai
 langchain_google_genai
+tenacity>=8.0

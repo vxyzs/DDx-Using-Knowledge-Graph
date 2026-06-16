@@ -18,7 +18,11 @@ def load_config() -> dict:
             "thresh_value": 0.55
         },
         "parser": {
-            "model_name": "openai/gpt-oss-safeguard-20b"
+            "model_name": "openai/gpt-oss-safeguard-20b",
+            "fallback_models": [],
+            "max_retries": 3,
+            "retry_delay": 1.0,
+            "request_timeout": 30.0
         },
         "traversal": {
             "smooth": 1e-06,
