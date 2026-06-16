@@ -1,6 +1,6 @@
 # Design Document: Core Interfaces
 
-The file [interfaces.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/interfaces.py) contains the foundational interfaces for the Natural Language Understanding (NLU) and Parsing systems of the DDx platform.
+The file [interfaces.py](../../core/interfaces.py) contains the foundational interfaces for the Natural Language Understanding (NLU) and Parsing systems of the DDx platform.
 
 ## Architectural Purpose
 

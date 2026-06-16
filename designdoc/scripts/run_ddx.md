@@ -1,6 +1,6 @@
 # Design Document: Interactive Diagnostic Console
 
-The file [run_ddx.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/scripts/run_ddx.py) acts as the CLI entry point for the interactive differential diagnosis console application.
+The file [run_ddx.py](../../scripts/run_ddx.py) acts as the CLI entry point for the interactive differential diagnosis console application.
 
 ---
 

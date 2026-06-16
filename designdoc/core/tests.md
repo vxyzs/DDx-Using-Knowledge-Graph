@@ -1,6 +1,6 @@
 # Design Document: Core Unit Testing Suite
 
-The testing suite under [core/tests/](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/tests/) provides comprehensive unit coverage for the DDx core logical modules.
+The testing suite under [core/tests/](../../core/tests/) provides comprehensive unit coverage for the DDx core logical modules.
 
 ---
 
@@ -31,13 +31,13 @@ sys.modules["langchain_core.output_parsers"] = m_core.output_parsers
 
 ## 2. Test File Registry
 
-### A. [test_interfaces.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/tests/test_interfaces.py)
+### A. [test_interfaces.py](../../core/tests/test_interfaces.py)
 - **Goal**: Verifies that standard abstract interfaces (`BaseSymptomRetriever` and `BaseSymptomParser`) correctly enforce instantiation rules.
 - **Checks**:
   - Class instantiation raises `TypeError` if abstract methods are not defined.
   - Correct implementation subclasses execute and return successfully.
 
-### B. [test_nlu.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/tests/test_nlu.py)
+### B. [test_nlu.py](../../core/tests/test_nlu.py)
 - **Goal**: Verifies natural language symptom chunking and similarity mapping.
 - **Checks**:
   - Delimiter parsing splits complex sentences into separate symptom tokens.
@@ -45,14 +45,14 @@ sys.modules["langchain_core.output_parsers"] = m_core.output_parsers
   - Negation words ("no ", "not ") flag matches as negated.
   - Relative filtering removes matches scoring lower than `0.1` below the maximum.
 
-### C. [test_parser.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/tests/test_parser.py)
+### C. [test_parser.py](../../core/tests/test_parser.py)
 - **Goal**: Verifies Pydantic parsing and output generation.
 - **Checks**:
   - Map outputs into Pydantic models with custom lists.
   - Handle LangChain invoke responses.
   - Gracefully catch API exceptions and return default empty lists.
 
-### D. [test_traversal.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/tests/test_traversal.py)
+### D. [test_traversal.py](../../core/tests/test_traversal.py)
 - **Goal**: Validates diagnostic traversal math and information gain.
 - **Checks**:
   - Capped score math boundaries (`capped_add` bounds at $\pm 2.0$).
@@ -77,7 +77,7 @@ python -m unittest discover -s core/tests -p "test_*.py" -v
 ```
 
 ### C. Custom Markdown Report Runner (Recommended)
-Executes the test suite, prints console details, and generates a structured report file [test_report.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/results/test_report.md):
+Executes the test suite, prints console details, and generates a structured report file [test_report.md](../../results/test_report.md):
 ```bash
 python scripts/run_unit_tests.py
 ```

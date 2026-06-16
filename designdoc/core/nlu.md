@@ -1,6 +1,6 @@
 # Design Document: Natural Language Understanding (NLU) Retriever
 
-The file [nlu.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/nlu.py) implements the class `DDxGraphNLU`, which inherits from `BaseSymptomRetriever`. It acts as the semantic similarity search engine that maps natural language queries to structured symptoms in the Knowledge Graph.
+The file [nlu.py](../../core/nlu.py) implements the class `DDxGraphNLU`, which inherits from `BaseSymptomRetriever`. It acts as the semantic similarity search engine that maps natural language queries to structured symptoms in the Knowledge Graph.
 
 ---
 

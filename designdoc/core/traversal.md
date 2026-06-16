@@ -1,6 +1,6 @@
 # Design Document: Diagnostic Traversal Engine
 
-The file [traversal.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/traversal.py) implements the foundational traversal classes: the abstract `BaseTraversal` class and the concrete interactive `KG_Traversal` class.
+The file [traversal.py](../../core/traversal.py) implements the foundational traversal classes: the abstract `BaseTraversal` class and the concrete interactive `KG_Traversal` class.
 
 ---
 

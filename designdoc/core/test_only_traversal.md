@@ -1,6 +1,6 @@
 # Design Document: Automated Traversal Simulator
 
-The file [test_only_traversal.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/test_only_traversal.py) implements the class `TestOnlyTraversal`, which inherits from `BaseTraversal`. It acts as an automated clinical diagnostic traversal simulator to evaluate system performance against static patient records.
+The file [test_only_traversal.py](../../core/test_only_traversal.py) implements the class `TestOnlyTraversal`, which inherits from `BaseTraversal`. It acts as an automated clinical diagnostic traversal simulator to evaluate system performance against static patient records.
 
 ---
 

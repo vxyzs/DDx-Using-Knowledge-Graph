@@ -1,6 +1,6 @@
 # Design Document: Traversal Evaluation System
 
-The file [test_only_traversal.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/scripts/test_only_traversal.py) implements the batch testing and evaluation framework for the differential diagnosis traversal engine.
+The file [test_only_traversal.py](../../scripts/test_only_traversal.py) implements the batch testing and evaluation framework for the differential diagnosis traversal engine.
 
 ---
 

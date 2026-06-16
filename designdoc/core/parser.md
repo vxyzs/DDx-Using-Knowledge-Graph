@@ -1,6 +1,6 @@
 # Design Document: LLM-Based Dialogue Parser
 
-The file [parser.py](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/core/parser.py) implements the class `Parser`, which inherits from `BaseSymptomParser`. It leverages a Large Language Model (LLM) to extract structured, type-safe symptom entities and values from unstructured text.
+The file [parser.py](../../core/parser.py) implements the class `Parser`, which inherits from `BaseSymptomParser`. It leverages a Large Language Model (LLM) to extract structured, type-safe symptom entities and values from unstructured text.
 
 ---
 
