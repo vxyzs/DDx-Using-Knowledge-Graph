@@ -178,4 +178,4 @@ For deep dives into project algorithms, mathematical update rules, and package i
 | **Logging** | [logger.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/designdoc/core/logger.md) | Centralized child loggers and config levels. |
 | **Traversal** | [traversal.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/designdoc/core/traversal.md) | Mathematical update formulas and entropy metrics. |
 | **Testing** | [tests.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/designdoc/core/tests.md) | Unit testing package structure and mocking setup. |
-| **Execution CLI** | [run_ddx.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/designdoc/scripts/run_ddx.md) | CLI orchestration, LRU caches, and optimizations. |
+| **Execution CLI** | [run_ddx.md](file:///c:/Users/91897/OneDrive/Desktop/FYP/DDx-Using-Knowledge-Graph/designdoc/scripts/run_ddx.md) | CLI orchestration and interactive diagnostic session runner. |
