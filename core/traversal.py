@@ -1,7 +1,9 @@
 import math
 from abc import ABC, abstractmethod
+
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
+
 
 class BaseTraversal(ABC):
     """
@@ -30,17 +32,22 @@ class BaseTraversal(ABC):
 
     def capped_add(self, score: float, delta: float) -> float:
         """
-        Apply bound capping on score changes to prevent floating point overflow or underflow.
+        Apply bound capping on score changes to prevent floating point overflow
+        or underflow.
         """
         return score + max(-self.MAX_DELTA, min(self.MAX_DELTA, delta))
 
-    def _compute_discriminating_evidence(self, candidate_conditions, scores, asked):
+    def _compute_discriminating_evidence(
+        self, candidate_conditions, scores, asked
+    ):
         """
-        Identify the most informative symptom node to query next across candidate conditions.
+        Identify the most informative symptom node to query next across
+        candidate conditions.
 
         Args:
             candidate_conditions (list): List of candidate disease codes.
-            scores (dict): Dictionary mapping conditions to their current likelihood scores.
+            scores (dict): Dictionary mapping conditions to their current
+              likelihood scores.
             asked (set): Set of evidence IDs already queried.
 
         Returns:
@@ -49,7 +56,9 @@ class BaseTraversal(ABC):
         best_e, best_gain = None, -1.0
 
         max_s = max(scores[c] for c in candidate_conditions)
-        post = {c: math.exp(scores[c] - max_s) for c in candidate_conditions}
+        post = {
+            c: math.exp(scores[c] - max_s) for c in candidate_conditions
+        }
         Z = sum(post.values())
         post = {c: p / Z for c, p in post.items()}
 
@@ -77,7 +86,8 @@ class BaseTraversal(ABC):
 
     def _convert_scores_to_probabilities(self, scores):
         """
-        Convert raw accumulative disease score values to normalized probability distributions.
+        Convert raw accumulative disease score values to normalized
+        probability distributions.
 
         Args:
             scores (dict): Dictionary of condition scores to normalize.
@@ -85,7 +95,9 @@ class BaseTraversal(ABC):
         if not scores:
             return
         max_score = max(scores.values())
-        exp_scores = {c: math.exp(s - max_score) for c, s in scores.items()}
+        exp_scores = {
+            c: math.exp(s - max_score) for c, s in scores.items()
+        }
         sum_exp = sum(exp_scores.values())
         if sum_exp > 0:
             for c in scores:
@@ -101,10 +113,12 @@ class BaseTraversal(ABC):
         """
         pass
 
+
 class KG_Traversal(BaseTraversal):
     """
-    Interactive clinical traversal engine that prompts the doctor/patient for details
-    and refines differential diagnosis candidate conditions recursively.
+    Interactive clinical traversal engine that prompts the doctor/patient
+    for details and refines differential diagnosis candidate conditions
+    recursively.
     """
 
     def __init__(self, G, scores, nlu, parser, user_input=None):
@@ -132,7 +146,8 @@ class KG_Traversal(BaseTraversal):
 
     def _parse_initial_query(self, user_input):
         """
-        Parse free-text user input, extract initial evidences, and compute initial scores.
+        Parse free-text user input, extract initial evidences, and compute
+        initial scores.
         """
         context = self.nlu.retrieve(user_input)
         evidences, values = self.parser.parse_query(user_input, context)
@@ -150,7 +165,9 @@ class KG_Traversal(BaseTraversal):
         """
         Locate next informative evidence using the base class solver.
         """
-        return self._compute_discriminating_evidence(candidate_conditions, self.scores, self.asked)
+        return self._compute_discriminating_evidence(
+            candidate_conditions, self.scores, self.asked
+        )
 
     def apply_binary_answer(self, evidence, is_yes):
         """
@@ -164,7 +181,9 @@ class KG_Traversal(BaseTraversal):
             )
 
             if is_yes:
-                self.scores[c] = self.capped_add(self.scores[c], self.safe_log(p))
+                self.scores[c] = self.capped_add(
+                    self.scores[c], self.safe_log(p)
+                )
                 self.observed_yes.add(evidence)
             else:
                 if p >= self.ABSENCE_PROB_THRESHOLD:
@@ -178,7 +197,8 @@ class KG_Traversal(BaseTraversal):
 
     def apply_value_answer(self, evidence, chosen_values):
         """
-        Apply score adjustment based on selected/parsed categorical symptom values.
+        Apply score adjustment based on selected/parsed categorical symptom
+        values.
         """
         self.observed_yes.add(evidence)
 
@@ -187,10 +207,13 @@ class KG_Traversal(BaseTraversal):
             for v in chosen_values:
                 stats = self.G.edges[evidence, v].get("cond_stats", {})
                 best_pv = max(
-                    best_pv, stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
+                    best_pv,
+                    stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
                 )
 
-            self.scores[c] = self.capped_add(self.scores[c], self.safe_log(best_pv))
+            self.scores[c] = self.capped_add(
+                self.scores[c], self.safe_log(best_pv)
+            )
 
         self.asked.add(evidence)
 
@@ -226,9 +249,9 @@ class KG_Traversal(BaseTraversal):
         print("\n=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
 
         for step in range(max_steps):
-            ranked = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
-                :top_k_conditions
-            ]
+            ranked = sorted(
+                self.scores.items(), key=lambda x: x[1], reverse=True
+            )[:top_k_conditions]
             candidate_conditions = [c for c, _ in ranked]
 
             print(f"\nStep {step + 1} — Current Differential:")
@@ -245,20 +268,29 @@ class KG_Traversal(BaseTraversal):
             parent = self.G.nodes[evidence].get("parent", None)
             print(f"Parent evidence: {parent}")
 
-            if parent and parent != evidence and parent not in self.observed_yes:
+            if (
+                parent
+                and parent != evidence
+                and parent not in self.observed_yes
+            ):
                 if parent not in self.asked:
                     question = self.G.nodes[parent]["question_en"]
                     print(f"\n🩺 Question: {question}")
                     ans = input("Your answer: ").strip()
 
                     context_text = (
-                        f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+                        f"The doctor asked: '{question}'. "
+                        f"The patient answered: '{ans}'"
                     )
                     context = self.nlu.retrieve(context_text)
-                    ext_evidences, ext_values = self.parser.parse_query(context_text, context)
+                    ext_evidences, ext_values = self.parser.parse_query(
+                        context_text, context
+                    )
 
                     if ext_evidences:
-                        self.apply_initial_evidence(ext_evidences, ext_values)
+                        self.apply_initial_evidence(
+                            ext_evidences, ext_values
+                        )
 
                     self.asked.add(parent)
 
@@ -272,10 +304,13 @@ class KG_Traversal(BaseTraversal):
             ans = input("Your answer: ").strip()
 
             context_text = (
-                f"The doctor asked: '{question}'. The patient answered: '{ans}'"
+                f"The doctor asked: '{question}'. "
+                f"The patient answered: '{ans}'"
             )
             context = self.nlu.retrieve(context_text)
-            ext_evidences, ext_values = self.parser.parse_query(context_text, context)
+            ext_evidences, ext_values = self.parser.parse_query(
+                context_text, context
+            )
 
             if ext_evidences:
                 self.apply_initial_evidence(ext_evidences, ext_values)
@@ -284,9 +319,9 @@ class KG_Traversal(BaseTraversal):
         print("\n=== FINAL RANKED CONDITIONS ===")
         self._convert_scores_to_probabilities(self.scores)
 
-        top_candidates = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
-            :top_k_conditions
-        ]
+        top_candidates = sorted(
+            self.scores.items(), key=lambda x: x[1], reverse=True
+        )[:top_k_conditions]
         for c, s in top_candidates:
             print(f"{c:40s} prob={s:.4f}")
 

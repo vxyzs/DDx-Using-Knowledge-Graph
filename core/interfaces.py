@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any
 
+
 class BaseSymptomRetriever(ABC):
     """
     Abstract base class defining the contract for symptom retriever components.
@@ -20,6 +21,7 @@ class BaseSymptomRetriever(ABC):
         """
         pass
 
+
 class BaseSymptomParser(ABC):
     """
     Abstract base class defining the contract for symptom parsing components.
@@ -27,7 +29,9 @@ class BaseSymptomParser(ABC):
     """
 
     @abstractmethod
-    def parse_query(self, text: str, context: Any) -> Tuple[List[str], List[Any]]:
+    def parse_query(
+        self, text: str, context: Any
+    ) -> Tuple[List[str], List[Any]]:
         """
         Parse raw patient dialogue under the provided retrieval context.
 
@@ -38,6 +42,7 @@ class BaseSymptomParser(ABC):
         Returns:
             Tuple[List[str], List[Any]]: A tuple of lists containing:
                 - List of matched evidence IDs (e.g., 'E_123')
-                - List of corresponding values ('YES', 'NO', or categorical/numerical value lists)
+                - List of corresponding values ('YES', 'NO', or
+                  categorical/numerical value lists)
         """
         pass

@@ -1,8 +1,10 @@
 import pickle
 from functools import lru_cache
-from core.traversal import KG_Traversal
+
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
+from core.traversal import KG_Traversal
+
 
 @lru_cache(maxsize=1)
 def load_graph(path="./Pickle/kg.pkl"):
@@ -18,6 +20,7 @@ def load_graph(path="./Pickle/kg.pkl"):
     with open(path, "rb") as f:
         G = pickle.load(f)
     return G
+
 
 def initialize_scores(G):
     """
@@ -36,15 +39,20 @@ def initialize_scores(G):
     ]
     return dict.fromkeys(condition_nodes, 0.0)
 
+
 def main():
     """
-    Main execution routine for running the interactive DDx diagnosis console script.
+    Main execution routine for running the interactive DDx diagnosis console
+    script.
     """
     try:
         print("Loading knowledge graph...")
         G = load_graph()
     except FileNotFoundError:
-        print("Knowledge Graph pickle file not found. Ensure './Pickle/kg.pkl' exists.")
+        print(
+            "Knowledge Graph pickle file not found. "
+            "Ensure './Pickle/kg.pkl' exists."
+        )
         return
 
     scores = initialize_scores(G)
@@ -85,6 +93,7 @@ def main():
         print("Missing Evidence:")
         for e in missing_evidence:
             print(f"  - {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,10 +1,12 @@
 import re
+
 from core.traversal import BaseTraversal
+
 
 class TestOnlyTraversal(BaseTraversal):
     """
-    Simulation traversal engine designed to evaluate diagnostic traversal performance
-    against ground truth dataset values.
+    Simulation traversal engine designed to evaluate diagnostic traversal
+    performance against ground truth dataset values.
     """
 
     VALUE_PATTERN = re.compile(r'^(E_\d+)_@_(V_\d+|\d+)$')
@@ -39,7 +41,8 @@ class TestOnlyTraversal(BaseTraversal):
 
     def find_existing_values(self, evidences, shown_values, evidence):
         """
-        Filter matched values from full evidence list that correspond to specified evidence ID.
+        Filter matched values from full evidence list that correspond to
+        specified evidence ID.
         """
         chosen = []
         for ev in evidences:
@@ -51,11 +54,15 @@ class TestOnlyTraversal(BaseTraversal):
                 chosen.append(ev)
         return chosen
 
-    def get_discriminating_evidence(self, candidate_conditions, scores, asked):
+    def get_discriminating_evidence(
+        self, candidate_conditions, scores, asked
+    ):
         """
         Locate next informative evidence using base class solver.
         """
-        return self._compute_discriminating_evidence(candidate_conditions, scores, asked)
+        return self._compute_discriminating_evidence(
+            candidate_conditions, scores, asked
+        )
 
     def run(
         self,
@@ -70,7 +77,8 @@ class TestOnlyTraversal(BaseTraversal):
         Run the simulation diagnostic traversal over patient data.
 
         Args:
-            scores (dict): Dictionary mapping conditions to current likelihood scores.
+            scores (dict): Dictionary mapping conditions to current likelihood
+              scores.
             evidences (list): Complete list of true patient symptoms.
             pathology (str): The true ground-truth disease pathology.
             k (int): Top k candidate conditions to output.
@@ -117,7 +125,9 @@ class TestOnlyTraversal(BaseTraversal):
                             else self.SMOOTH
                         )
                         if is_yes:
-                            scores[c] = self.capped_add(scores[c], self.safe_log(p))
+                            scores[c] = self.capped_add(
+                                scores[c], self.safe_log(p)
+                            )
                         else:
                             if p >= self.ABSENCE_PROB_THRESHOLD:
                                 scores[c] = self.capped_add(
@@ -145,7 +155,9 @@ class TestOnlyTraversal(BaseTraversal):
                         else self.SMOOTH
                     )
                     if is_yes:
-                        scores[c] = self.capped_add(scores[c], self.safe_log(p))
+                        scores[c] = self.capped_add(
+                            scores[c], self.safe_log(p)
+                        )
                     else:
                         if p >= self.ABSENCE_PROB_THRESHOLD:
                             scores[c] = self.capped_add(
@@ -154,7 +166,9 @@ class TestOnlyTraversal(BaseTraversal):
                             )
                 continue
 
-            shown_values = self.get_top_values(evidence, candidate_conditions)
+            shown_values = self.get_top_values(
+                evidence, candidate_conditions
+            )
             chosen_values = self.find_existing_values(
                 evidences, shown_values, evidence
             )
@@ -178,12 +192,18 @@ class TestOnlyTraversal(BaseTraversal):
             for c in scores:
                 best_pv = self.SMOOTH
                 for v in chosen_values:
-                    stats = self.G.edges[evidence, v].get("cond_stats", {})
+                    stats = self.G.edges[evidence, v].get(
+                        "cond_stats", {}
+                    )
                     best_pv = max(
                         best_pv,
-                        stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
+                        stats.get(c, {}).get(
+                            "p_v_given_e_c", self.SMOOTH
+                        )
                     )
-                scores[c] = self.capped_add(scores[c], self.safe_log(best_pv))
+                scores[c] = self.capped_add(
+                    scores[c], self.safe_log(best_pv)
+                )
 
         self._convert_scores_to_probabilities(scores)
 

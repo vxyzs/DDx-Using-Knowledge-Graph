@@ -1,15 +1,16 @@
 import ast
 import json
+import os
 import pickle
-import pandas as pd
 import random
 from collections import defaultdict
-import os
 
-from core.test_only_traversal import TestOnlyTraversal
-from core.traversal import KG_Traversal
+import pandas as pd
+
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
+from core.test_only_traversal import TestOnlyTraversal
+from core.traversal import KG_Traversal
 
 DATA_PATH = "./Data/ddxplus/release_test_patients.csv"
 N_SAMPLES = 10000
@@ -33,6 +34,7 @@ nlu = DDxGraphNLU(G)
 parser = Parser()
 
 conditions = [c for c in G.nodes if G.nodes[c]["type"] == "condition"]
+
 
 def parse_full_evidences(row):
     """
@@ -62,9 +64,11 @@ def parse_full_evidences(row):
             evidences[i] = f"{eid}_@_{vid}"
     return evidences
 
+
 def sample_partial_evidences(all_evidences, pathology, G):
     """
-    Filter and sample a partial subset of patient evidences that are highly likely for the pathology.
+    Filter and sample a partial subset of patient evidences that are highly
+    likely for the pathology.
 
     Args:
         all_evidences (list): Complete list of true patient evidences.
@@ -79,18 +83,28 @@ def sample_partial_evidences(all_evidences, pathology, G):
     for ev in all_evidences:
         if "_@_" in ev:
             eid, vid = ev.split("_@_")
-            stats = G.edges[eid, vid].get("cond_stats", {}) if G.has_edge(eid, vid) else {}
+            stats = (
+                G.edges[eid, vid].get("cond_stats", {})
+                if G.has_edge(eid, vid)
+                else {}
+            )
             p = stats.get(pathology, {}).get("p_v_given_e_c", 1e-6)
         else:
-            p = G.edges[pathology, ev]["p_e_given_c"] if G.has_edge(pathology, ev) else 1e-6
+            p = (
+                G.edges[pathology, ev]["p_e_given_c"]
+                if G.has_edge(pathology, ev)
+                else 1e-6
+            )
         scored_evidences.append((ev, p))
         
     scored_evidences.sort(key=lambda x: x[1], reverse=True)
     return [ev for ev, p in scored_evidences[:k]]
 
+
 def parse_evidence_format(evid_list):
     """
-    Convert dataset evidences list to list and values format expected by traversal algorithms.
+    Convert dataset evidences list to list and values format expected by
+    traversal algorithms.
 
     Args:
         evid_list (list): Evidences list.
@@ -111,12 +125,14 @@ def parse_evidence_format(evid_list):
             values.append("YES")
     return evidences, values
 
+
 def get_rank(scores, pathology):
     """
     Determine the numerical rank of the true pathology within current scores.
 
     Args:
-        scores (dict): Dictionary mapping conditions to likelihood probabilities.
+        scores (dict): Dictionary mapping conditions to likelihood
+          probabilities.
         pathology (str): True condition ID.
 
     Returns:
@@ -128,14 +144,18 @@ def get_rank(scores, pathology):
             return i
     return len(scores)
 
+
 def evaluate_scenario(df_subset, scenario_name, use_partial=False):
     """
-    Evaluate traversal accuracy, steps, and probabilities on a dataset subset under a given scenario.
+    Evaluate traversal accuracy, steps, and probabilities on a dataset
+    subset under a given scenario.
 
     Args:
         df_subset (pandas.DataFrame): Patient dataset subset to run.
-        scenario_name (str): Label identifier for the current run configuration.
-        use_partial (bool): True to use partial/masked evidences, False for full info.
+        scenario_name (str): Label identifier for the current run
+          configuration.
+        use_partial (bool): True to use partial/masked evidences, False
+          for full info.
 
     Returns:
         dict: Performance and metrics dictionary mapping results.
@@ -184,7 +204,9 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
         results["rank_histogram"][rank] += 1
         results["steps"] += steps_taken
 
-        ranked = sorted(traversal.scores.items(), key=lambda x: x[1], reverse=True)
+        ranked = sorted(
+            traversal.scores.items(), key=lambda x: x[1], reverse=True
+        )
         top1_score = ranked[0][1] if ranked else 0.0
         gt_score = traversal.scores.get(pathology, 0.0)
 
@@ -233,7 +255,10 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
         acc_at_t = results["gt_prob_thresholds"][t] / total
         print(f"GT Prob >= {t}: {acc_at_t:.4f}")
         
-    results["gt_prob_thresholds"] = {t: results["gt_prob_thresholds"][t] / total for t in [0.5, 0.6, 0.7]}
+    results["gt_prob_thresholds"] = {
+        t: results["gt_prob_thresholds"][t] / total
+        for t in [0.5, 0.6, 0.7]
+    }
 
     print("\n--- SYSTEM ---")
     print(f"Avg Steps: {avg_steps:.2f}")
@@ -250,6 +275,7 @@ def evaluate_scenario(df_subset, scenario_name, use_partial=False):
     }
 
     return results
+
 
 def filter_difficult_cases(df):
     """
@@ -273,9 +299,13 @@ def filter_difficult_cases(df):
             continue
     return pd.DataFrame(hard_cases)
 
-def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_results.json"):
+
+def evaluate_per_pathology_and_save(
+    df, output_path="./results/per_pathology_results.json"
+):
     """
-    Evaluate traversal systems pathology by pathology under multiple information configs.
+    Evaluate traversal systems pathology by pathology under multiple
+    information configs.
 
     Args:
         df (pandas.DataFrame): Full patient dataset.
@@ -309,7 +339,9 @@ def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_res
             scenario_name=f"{pathology_name} - Partial Info",
             use_partial=True
         )
-        partial_results["rank_histogram"] = dict(partial_results["rank_histogram"])
+        partial_results["rank_histogram"] = dict(
+            partial_results["rank_histogram"]
+        )
         pathology_results["partial_info"] = partial_results
 
         hard_df = filter_difficult_cases(df_sample)
@@ -320,7 +352,9 @@ def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_res
                 scenario_name=f"{pathology_name} - Hard Cases",
                 use_partial=True
             )
-            hard_results["rank_histogram"] = dict(hard_results["rank_histogram"])
+            hard_results["rank_histogram"] = dict(
+                hard_results["rank_histogram"]
+            )
             pathology_results["hard_cases"] = {
                 "num_samples": len(hard_df),
                 "metrics": hard_results
@@ -342,22 +376,7 @@ def evaluate_per_pathology_and_save(df, output_path="./results/per_pathology_res
         json.dump(all_results, f, indent=4)
     print(f"\nSaved results to {output_path}")
 
+
 if __name__ == "__main__":
     random.seed(RANDOM_SEED)
-
-    # 1. FULL INFO
-    # evaluate_scenario(df, "Full Information", use_partial=False)
-
-    # 2. PARTIAL INFO
-    # evaluate_scenario(df, "Partial Information (50%)", use_partial=True)
-
-    # # 3. HARD CASES
-    # hard_df = filter_difficult_cases(df)
-
-    # if len(hard_df) > 0:
-    #     evaluate_scenario(hard_df, "Difficult Cases", use_partial=True)
-    # else:
-    #     print("\nNo difficult cases found in sample.")
-
-    # 4. PER-PATHOLOGY JSON GENERATION
     evaluate_per_pathology_and_save(df)

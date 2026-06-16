@@ -1,12 +1,14 @@
-import os
 import json
+import os
 import pickle
-from typing import List, Union, Any, Tuple
+from typing import Any, List, Tuple, Union
+
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, SecretStr
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field, SecretStr
+
 from core.interfaces import BaseSymptomParser
 from core.nlu import DDxGraphNLU
 
@@ -15,26 +17,31 @@ load_dotenv()
 with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
     release_evidences = json.load(f)
 
+
 class PatientEvidences(BaseModel):
     """
     Pydantic model representing structured patient evidence extraction.
     """
     evidences: List[str] = Field(
         description=(
-            "List of extracted evidence IDs. Only include mentioned evidences. "
-            "If an evidence with data type 'M' is present, its parent evidence ID must also be included."
+            "List of extracted evidence IDs. Only include mentioned "
+            "evidences. If an evidence with data type 'M' is present, "
+            "its parent evidence ID must also be included."
         )
     )
     values: List[Union[str, List[str]]] = Field(
         description=(
-            "Corresponding values for the evidences. Boolean/absent is 'YES'/'NO'. "
-            "Categorical/numerical is a list of exact mapped IDs (e.g., [['E_55_@_V_125']])."
+            "Corresponding values for the evidences. Boolean/absent is "
+            "'YES'/'NO'. Categorical/numerical is a list of exact "
+            "mapped IDs (e.g., [['E_55_@_V_125']])."
         )
     )
 
+
 class Parser(BaseSymptomParser):
     """
-    LLM-based medical dialogue parser that extracts structured findings using Pydantic templates.
+    LLM-based medical dialogue parser that extracts structured findings using
+    Pydantic templates.
     """
 
     def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
@@ -51,15 +58,20 @@ class Parser(BaseSymptomParser):
             base_url="https://router.huggingface.co/v1",
             temperature=0.0
         )
-        self.output_parser = PydanticOutputParser(pydantic_object=PatientEvidences)
+        self.output_parser = PydanticOutputParser(
+            pydantic_object=PatientEvidences
+        )
 
-    def parser(self, text: str, context: Union[str, List[Any], dict]) -> PatientEvidences:
+    def parser(
+        self, text: str, context: Union[str, List[Any], dict]
+    ) -> PatientEvidences:
         """
         Invoke LLM to extract structured patient symptoms schema.
 
         Args:
             text (str): Patient descriptions or conversation fragment.
-            context (Union[str, List[Any], dict]): Retrieved context to guide the LLM.
+            context (Union[str, List[Any], dict]): Retrieved context to
+              guide the LLM.
 
         Returns:
             PatientEvidences: Populated Pydantic schema model.
@@ -84,11 +96,17 @@ class Parser(BaseSymptomParser):
             {format_instructions}
             ''',
             input_variables=["text", "context"],
-            partial_variables={"format_instructions": self.output_parser.get_format_instructions()},
+            partial_variables={
+                "format_instructions": (
+                    self.output_parser.get_format_instructions()
+                )
+            },
         )
 
         try:
-            context_json = context if isinstance(context, str) else json.dumps(context)
+            context_json = (
+                context if isinstance(context, str) else json.dumps(context)
+            )
             prompt_value = prompt.invoke({
                 "text": text,
                 "context": context_json,
@@ -96,20 +114,20 @@ class Parser(BaseSymptomParser):
             
             llm_response = self.llm.invoke(prompt_value)
             
-            print("\n" + "="*50)
+            print("\n" + "=" * 50)
             print("1. BEFORE PYDANTIC (Raw LLM Output)")
-            print("="*50)
+            print("=" * 50)
             print(llm_response.content)
             
             parsed_result = self.output_parser.invoke(llm_response)
             
-            print("\n" + "="*50)
+            print("\n" + "=" * 50)
             print("2. AFTER PYDANTIC (Pydantic Object Representation)")
-            print("="*50)
+            print("=" * 50)
             print(repr(parsed_result))
             print("\nAs Dictionary:")
             print(json.dumps(parsed_result.model_dump(), indent=2))
-            print("="*50 + "\n")
+            print("=" * 50 + "\n")
             
             return parsed_result
             
@@ -117,7 +135,9 @@ class Parser(BaseSymptomParser):
             print(f"Error during LLM decoding/parsing: {e}")
             return PatientEvidences(evidences=[], values=[])
 
-    def parse_query(self, text: str, context: Union[str, List[Any], dict]) -> Tuple[List[str], List[Any]]:
+    def parse_query(
+        self, text: str, context: Union[str, List[Any], dict]
+    ) -> Tuple[List[str], List[Any]]:
         """
         Public endpoint implementation of the BaseSymptomParser interface.
 
@@ -126,28 +146,39 @@ class Parser(BaseSymptomParser):
             context (Union[str, List[Any], dict]): Context details.
 
         Returns:
-            Tuple[List[str], List[Any]]: Parallel lists of evidence keys and mapped values.
+            Tuple[List[str], List[Any]]: Parallel lists of evidence keys and
+              mapped values.
         """
         parsed_data = self.parser(text, context)
         if parsed_data is None:
             return [], []
         return parsed_data.evidences, parsed_data.values
 
+
 if __name__ == "__main__":
     parser = Parser()
     G = pickle.load(open("Pickle/kg.pkl", "rb"))
     nlu = DDxGraphNLU(G)
-    sample_text = "For the past couple of weeks, I’ve been having sudden episodes of very intense pain on one side of my head, mainly around my eye and temple. The pain feels sharp and unbearable, and when it happens my eye starts watering and my nose feels blocked on the same side. I can’t stay still during these attacks and feel extremely restless. These episodes happen multiple times and often around the same time of day, then completely go away in between.No fever and cough."
+    sample_text = (
+        "For the past couple of weeks, I’ve been having sudden episodes "
+        "of very intense pain on one side of my head, mainly around my "
+        "eye and temple. The pain feels sharp and unbearable, and when "
+        "it happens my eye starts watering and my nose feels blocked on "
+        "the same side. I can’t stay still during these attacks and feel "
+        "extremely restless. These episodes happen multiple times and "
+        "often around the same time of day, then completely go away "
+        "in between.No fever and cough."
+    )
     context = nlu.retrieve(sample_text)
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("1. RETRIEVED CONTEXT FROM NLU")
-    print("="*50)
+    print("=" * 50)
     print(context)
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
     evidences, values = parser.parse_query(sample_text, context)
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("3. FINAL EXTRACTED LISTS")
-    print("="*50)
+    print("=" * 50)
     print("Evidences:", evidences)
     print("Values:", values)
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
