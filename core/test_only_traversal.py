@@ -1,27 +1,28 @@
-import math
 import re
+from core.traversal import BaseTraversal
 
-class TestOnlyTraversal:
-    # ---------------- CONFIG ----------------
-    SMOOTH = 1e-6
-    MAX_DELTA = 2.0
-    ABSENCE_PROB_THRESHOLD = 0.5
-    ABSENCE_WEIGHT = 0.5
+class TestOnlyTraversal(BaseTraversal):
+    """
+    Simulation traversal engine designed to evaluate diagnostic traversal performance
+    against ground truth dataset values.
+    """
 
     VALUE_PATTERN = re.compile(r'^(E_\d+)_@_(V_\d+|\d+)$')
 
     def __init__(self, G):
-        self.G = G
+        """
+        Initialize simulation traversal engine.
 
-    # ---------------- UTILS ----------------
-    def safe_log(self, p):
-        return math.log(max(p, self.SMOOTH))
+        Args:
+            G (networkx.Graph): The disease-evidence knowledge graph.
+        """
+        super().__init__(G)
 
-    def capped_add(self, score, delta):
-        return score + max(-self.MAX_DELTA, min(self.MAX_DELTA, delta))
-
-    # ---------------- VALUE SELECTION ----------------
     def get_top_values(self, evidence, candidate_conditions):
+        """
+        Retrieve highest scoring categorical values for the specified evidence
+        across candidate conditions.
+        """
         scores = []
         for _, v in self.G.out_edges(evidence):
             if not self.G.nodes[v]["type"].startswith("possible"):
@@ -37,6 +38,9 @@ class TestOnlyTraversal:
         return [v for v, _ in scores]
 
     def find_existing_values(self, evidences, shown_values, evidence):
+        """
+        Filter matched values from full evidence list that correspond to specified evidence ID.
+        """
         chosen = []
         for ev in evidences:
             m = self.VALUE_PATTERN.match(ev)
@@ -47,38 +51,12 @@ class TestOnlyTraversal:
                 chosen.append(ev)
         return chosen
 
-    # ---------------- DISCRIMINATING EVIDENCE ----------------
     def get_discriminating_evidence(self, candidate_conditions, scores, asked):
-        best_e, best_gain = None, -1.0
+        """
+        Locate next informative evidence using base class solver.
+        """
+        return self._compute_discriminating_evidence(candidate_conditions, scores, asked)
 
-        max_s = max(scores[c] for c in candidate_conditions)
-        post = {c: math.exp(scores[c] - max_s) for c in candidate_conditions}
-        Z = sum(post.values())
-        post = {c: p / Z for c, p in post.items()}
-
-        for c in candidate_conditions:
-            for _, e, _ in self.G.out_edges(c, data=True):
-                if self.G.nodes[e]["type"] != "evidence" or e in asked:
-                    continue
-
-                ps = []
-                for c2 in candidate_conditions:
-                    p = (
-                        self.G.edges[c2, e]["p_e_given_c"]
-                        if self.G.has_edge(c2, e)
-                        else self.SMOOTH
-                    )
-                    ps.append((post[c2], p))
-
-                mean = sum(w * p for w, p in ps)
-                gain = sum(w * (p - mean) ** 2 for w, p in ps)
-
-                if gain > best_gain:
-                    best_gain, best_e = gain, e
-
-        return best_e
-
-    # ---------------- MAIN TEST-TIME TRAVERSAL ----------------
     def run(
         self,
         scores,
@@ -88,18 +66,30 @@ class TestOnlyTraversal:
         max_steps=5,
         initial_asked=None
     ):
+        """
+        Run the simulation diagnostic traversal over patient data.
+
+        Args:
+            scores (dict): Dictionary mapping conditions to current likelihood scores.
+            evidences (list): Complete list of true patient symptoms.
+            pathology (str): The true ground-truth disease pathology.
+            k (int): Top k candidate conditions to output.
+            max_steps (int): Limit on traversal step count.
+            initial_asked (set, optional): Initial set of queried evidence keys.
+
+        Returns:
+            int: Number of traversal steps taken.
+        """
         asked = set() if initial_asked is None else set(initial_asked)
-        observed_yes =  set()
+        observed_yes = set()
         observed_no = set()
 
-        # Initialize observed YES from DDXPlus evidences
         for ev in evidences:
             if "_@_" in ev:
                 observed_yes.add(ev.split("_@_")[0])
             else:
                 observed_yes.add(ev)
 
-        # Traversal loop
         steps_taken = 0
         for _ in range(max_steps):
             steps_taken += 1
@@ -117,7 +107,6 @@ class TestOnlyTraversal:
 
             parent = self.G.nodes[evidence].get("parent")
 
-            # ---------- Parent gating ----------
             if parent and parent != evidence:
                 if parent not in observed_yes and parent not in asked:
                     is_yes = parent in observed_yes
@@ -142,7 +131,6 @@ class TestOnlyTraversal:
 
             asked.add(evidence)
 
-            # ---------------- Binary evidence ----------------
             values = [
                 v for _, v in self.G.out_edges(evidence)
                 if self.G.nodes[v]["type"].startswith("possible")
@@ -166,7 +154,6 @@ class TestOnlyTraversal:
                             )
                 continue
 
-            # ---------------- Value-based evidence ----------------
             shown_values = self.get_top_values(evidence, candidate_conditions)
             chosen_values = self.find_existing_values(
                 evidences, shown_values, evidence
@@ -198,17 +185,6 @@ class TestOnlyTraversal:
                     )
                 scores[c] = self.capped_add(scores[c], self.safe_log(best_pv))
 
-        # ---------------- Convert scores to probabilities ----------------
-        if scores:
-            max_score = max(scores.values())
-            exp_scores = {c: math.exp(s - max_score) for c, s in scores.items()}
-            sum_exp = sum(exp_scores.values())
-            if sum_exp > 0:
-                for c in scores:
-                    scores[c] = exp_scores[c] / sum_exp
-            else:
-                for c in scores:
-                    scores[c] = 0.0
+        self._convert_scores_to_probabilities(scores)
 
-        # ---------------- Evaluation ----------------
-        return steps_taken    
+        return steps_taken

@@ -1,64 +1,61 @@
 import math
+from abc import ABC, abstractmethod
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
 
-
-class KG_Traversal:
-    # ---------------- CONFIG ----------------
+class BaseTraversal(ABC):
+    """
+    Abstract base class representing generic Diagnostic Traversal engines
+    over the DDx Knowledge Graph.
+    """
     SMOOTH = 1e-6
     MAX_DELTA = 2.0
     ABSENCE_PROB_THRESHOLD = 0.5
     ABSENCE_WEIGHT = 0.5
 
-    def __init__(self, G, scores, nlu, parser, user_input=None):
-        self.nlu = nlu
-        self.parser = parser
+    def __init__(self, G):
+        """
+        Initialize the traversal engine base with the knowledge graph.
 
+        Args:
+            G (networkx.Graph): The disease-evidence knowledge graph.
+        """
         self.G = G
-        self.scores = scores
 
-        self.asked = set()
-        self.observed_yes = set()
-        self.observed_no = set()
-
-        if user_input:
-            self._parse_initial_query(user_input)
-
-    def _parse_initial_query(self, user_input):
+    def safe_log(self, p: float) -> float:
         """
-        Parse free-text user input and initialize evidence + scores.
+        Calculate log probability safely preventing log(0) error.
         """
-        context = self.nlu.retrieve(user_input)
-        evidences, values = self.parser.parse_query(user_input, context)
-
-        if not evidences:
-            return
-
-        print("\nParsed initial evidence:")
-        for e, v in zip(evidences, values):
-            print(f"  {e} → {v}")
-
-        self.apply_initial_evidence(evidences=evidences, values=values)
-
-    # ---------------- UTIL ----------------
-    def safe_log(self, p):
         return math.log(max(p, self.SMOOTH))
 
-    def capped_add(self, score, delta):
+    def capped_add(self, score: float, delta: float) -> float:
+        """
+        Apply bound capping on score changes to prevent floating point overflow or underflow.
+        """
         return score + max(-self.MAX_DELTA, min(self.MAX_DELTA, delta))
 
-    # ---------------- EVIDENCE SELECTION ----------------
-    def get_discriminating_evidence(self, candidate_conditions):
+    def _compute_discriminating_evidence(self, candidate_conditions, scores, asked):
+        """
+        Identify the most informative symptom node to query next across candidate conditions.
+
+        Args:
+            candidate_conditions (list): List of candidate disease codes.
+            scores (dict): Dictionary mapping conditions to their current likelihood scores.
+            asked (set): Set of evidence IDs already queried.
+
+        Returns:
+            str or None: The selected evidence ID, or None if none remain.
+        """
         best_e, best_gain = None, -1.0
 
-        max_s = max(self.scores[c] for c in candidate_conditions)
-        post = {c: math.exp(self.scores[c] - max_s) for c in candidate_conditions}
+        max_s = max(scores[c] for c in candidate_conditions)
+        post = {c: math.exp(scores[c] - max_s) for c in candidate_conditions}
         Z = sum(post.values())
         post = {c: p / Z for c, p in post.items()}
 
         for c in candidate_conditions:
             for _, e, _ in self.G.out_edges(c, data=True):
-                if self.G.nodes[e]["type"] != "evidence" or e in self.asked:
+                if self.G.nodes[e]["type"] != "evidence" or e in asked:
                     continue
 
                 ps = []
@@ -78,8 +75,87 @@ class KG_Traversal:
 
         return best_e
 
-    # ---------------- SCORE UPDATES ----------------
+    def _convert_scores_to_probabilities(self, scores):
+        """
+        Convert raw accumulative disease score values to normalized probability distributions.
+
+        Args:
+            scores (dict): Dictionary of condition scores to normalize.
+        """
+        if not scores:
+            return
+        max_score = max(scores.values())
+        exp_scores = {c: math.exp(s - max_score) for c, s in scores.items()}
+        sum_exp = sum(exp_scores.values())
+        if sum_exp > 0:
+            for c in scores:
+                scores[c] = exp_scores[c] / sum_exp
+        else:
+            for c in scores:
+                scores[c] = 0.0
+
+    @abstractmethod
+    def run(self, *args, **kwargs):
+        """
+        Run the interactive or simulation traversal process.
+        """
+        pass
+
+class KG_Traversal(BaseTraversal):
+    """
+    Interactive clinical traversal engine that prompts the doctor/patient for details
+    and refines differential diagnosis candidate conditions recursively.
+    """
+
+    def __init__(self, G, scores, nlu, parser, user_input=None):
+        """
+        Initialize interactive diagnostic traversal.
+
+        Args:
+            G (networkx.Graph): The knowledge graph.
+            scores (dict): Initial scores dictionary.
+            nlu (DDxGraphNLU): Natural language understanding retriever.
+            parser (Parser): LLM-based symptom value parser.
+            user_input (str, optional): Raw user initial complaint text.
+        """
+        super().__init__(G)
+        self.nlu = nlu
+        self.parser = parser
+        self.scores = scores
+
+        self.asked = set()
+        self.observed_yes = set()
+        self.observed_no = set()
+
+        if user_input:
+            self._parse_initial_query(user_input)
+
+    def _parse_initial_query(self, user_input):
+        """
+        Parse free-text user input, extract initial evidences, and compute initial scores.
+        """
+        context = self.nlu.retrieve(user_input)
+        evidences, values = self.parser.parse_query(user_input, context)
+
+        if not evidences:
+            return
+
+        print("\nParsed initial evidence:")
+        for e, v in zip(evidences, values):
+            print(f"  {e} → {v}")
+
+        self.apply_initial_evidence(evidences=evidences, values=values)
+
+    def get_discriminating_evidence(self, candidate_conditions):
+        """
+        Locate next informative evidence using the base class solver.
+        """
+        return self._compute_discriminating_evidence(candidate_conditions, self.scores, self.asked)
+
     def apply_binary_answer(self, evidence, is_yes):
+        """
+        Apply score adjustment based on yes/no symptom answer.
+        """
         for c in self.scores:
             p = (
                 self.G.edges[c, evidence]["p_e_given_c"]
@@ -101,6 +177,9 @@ class KG_Traversal:
         self.asked.add(evidence)
 
     def apply_value_answer(self, evidence, chosen_values):
+        """
+        Apply score adjustment based on selected/parsed categorical symptom values.
+        """
         self.observed_yes.add(evidence)
 
         for c in self.scores:
@@ -115,8 +194,10 @@ class KG_Traversal:
 
         self.asked.add(evidence)
 
-    # ---------------- INITIAL EVIDENCE ----------------
     def apply_initial_evidence(self, evidences, values):
+        """
+        Apply batch initial evidence list to initialize scoring state.
+        """
         for evid, val in zip(evidences, values):
             self.asked.add(evid)
 
@@ -129,7 +210,6 @@ class KG_Traversal:
             elif val == "NO":
                 self.observed_no.add(evid)
 
-            # Apply scoring
             if val not in ("YES", "NO"):
                 for v in val:
                     for c in self.scores:
@@ -139,58 +219,13 @@ class KG_Traversal:
             else:
                 self.apply_binary_answer(evid, val == "YES")
 
-    # ---------------- MAIN LOOP ----------------
     def run(self, max_steps=5, top_k_conditions=10):
+        """
+        Run the interactive clinical diagnostic loop.
+        """
         print("\n=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
 
-        # for step in range(max_steps):
-        #     ranked = sorted(
-        #         self.scores.items(),
-        #         key=lambda x: x[1],
-        #         reverse=True
-        #     )[:top_k_conditions]
-
-        #     candidates = [c for c, _ in ranked]
-
-        #     print(f"\nStep {step + 1}")
-        #     for c, s in ranked:
-        #         print(f"{c:40s} score={s:.4f}")
-
-        #     if len(candidates) <= 1:
-        #         break
-
-        #     evidence = self.get_discriminating_evidence(candidates)
-        #     if not evidence:
-        #         break
-
-        #     print(f"\n🩺 {self.G.nodes[evidence]['question_en']}")
-
-        #     values = [
-        #         v for _, v in self.G.out_edges(evidence)
-        #         if self.G.nodes[v]["type"].startswith("possible")
-        #     ]
-
-        #     if not values:
-        #         ans = input("yes / no: ").strip().lower()
-        #         self.apply_binary_answer(evidence, ans in ("y", "yes"))
-        #         continue
-
-        #     text = input()
-        #     query = self.G.nodes[evidence]['question_en'] + " " + text
-        #     matches = self._find_best_match(query)
-
-        #     if matches:
-        #         for m in matches:
-        #             if m and m["value"]:
-        #                 chosen = m["value"] if isinstance(m["value"], list) else [m["value"]]
-        #                 self.apply_value_answer(evidence, chosen)
-
-        # print("\n=== FINAL RANKED CONDITIONS ===")
-        # for c, s in sorted(self.scores.items(), key=lambda x: x[1], reverse=True):
-        #     print(f"{c:40s} score={s:.4f}")
-
         for step in range(max_steps):
-            # --- A. Rank and Display the current Top Candidates ---
             ranked = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
                 :top_k_conditions
             ]
@@ -203,12 +238,10 @@ class KG_Traversal:
             if len(candidate_conditions) <= 1:
                 break
 
-            # --- B. Decide the next Question ---
             evidence = self.get_discriminating_evidence(candidate_conditions)
             if evidence is None:
                 break
 
-            # print(f"Selected evidence: {self.G.nodes[evidence]}")
             parent = self.G.nodes[evidence].get("parent", None)
             print(f"Parent evidence: {parent}")
 
@@ -218,7 +251,6 @@ class KG_Traversal:
                     print(f"\n🩺 Question: {question}")
                     ans = input("Your answer: ").strip()
 
-                    # Feed both the doctor's question and patient's answer to the LLM
                     context_text = (
                         f"The doctor asked: '{question}'. The patient answered: '{ans}'"
                     )
@@ -230,9 +262,8 @@ class KG_Traversal:
 
                     self.asked.add(parent)
 
-                if parent in self.observed_no:  # is asked but is not in observed_yes
+                if parent in self.observed_no:
                     continue
-                # if parent is asked and is in observed_yes, we proceed to ask evidence
 
             self.asked.add(evidence)
             question = self.G.nodes[evidence]["question_en"]
@@ -240,7 +271,6 @@ class KG_Traversal:
             print(f"\n🩺 Question: {question}")
             ans = input("Your answer: ").strip()
 
-            # Feed both the doctor's question and patient's answer to the LLM
             context_text = (
                 f"The doctor asked: '{question}'. The patient answered: '{ans}'"
             )
@@ -250,19 +280,9 @@ class KG_Traversal:
             if ext_evidences:
                 self.apply_initial_evidence(ext_evidences, ext_values)
             step += 1
-        print("\n=== FINAL RANKED CONDITIONS ===")
 
-        # ---------------- Convert scores to probabilities ----------------
-        if self.scores:
-            max_score = max(self.scores.values())
-            exp_scores = {c: math.exp(s - max_score) for c, s in self.scores.items()}
-            sum_exp = sum(exp_scores.values())
-            if sum_exp > 0:
-                for c in self.scores:
-                    self.scores[c] = exp_scores[c] / sum_exp
-            else:
-                for c in self.scores:
-                    self.scores[c] = 0.0
+        print("\n=== FINAL RANKED CONDITIONS ===")
+        self._convert_scores_to_probabilities(self.scores)
 
         top_candidates = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[
             :top_k_conditions

@@ -1,56 +1,69 @@
 import os
 import json
-from typing import List, Union, Any
-from openai import OpenAI
+import pickle
+from typing import List, Union, Any, Tuple
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
-from core.nlu import DDxGraphNLU
-import pickle
-
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from core.interfaces import BaseSymptomParser
+from core.nlu import DDxGraphNLU
 
 load_dotenv()
 
 with open('Data/ddxplus/release_evidences.compact.json', 'r') as f:
     release_evidences = json.load(f)
 
-# --- 1. Define the Pydantic Schema ---
 class PatientEvidences(BaseModel):
+    """
+    Pydantic model representing structured patient evidence extraction.
+    """
     evidences: List[str] = Field(
         description=(
-            "List of extracted evidence IDs. "
-            "Note: Only include mentioned evidences. If an evidence with data type 'M' is present, "
-            "you MUST also include its parent evidence ID in this list."
+            "List of extracted evidence IDs. Only include mentioned evidences. "
+            "If an evidence with data type 'M' is present, its parent evidence ID must also be included."
         )
     )
     values: List[Union[str, List[str]]] = Field(
         description=(
-            "Corresponding values for the evidences. "
-            "- For Boolean ('B') or absent evidences: use 'YES' or 'NO'. "
-            "- For categorical/numerical: use a list of exact mapped IDs (e.g., [['E_55_@_V_125', 'E_55_@_V_29']]]). "
-            "- For multiple values: include all mapped IDs in the list."
+            "Corresponding values for the evidences. Boolean/absent is 'YES'/'NO'. "
+            "Categorical/numerical is a list of exact mapped IDs (e.g., [['E_55_@_V_125']])."
         )
     )
 
-class Parser:
+class Parser(BaseSymptomParser):
+    """
+    LLM-based medical dialogue parser that extracts structured findings using Pydantic templates.
+    """
+
     def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
+        """
+        Initialize the LLM parser.
+
+        Args:
+            model_name (str): LLM model identifier.
+        """
         self.model_name = model_name
-        
-        # --- 2. Initialize the LLM ---
         self.llm = ChatOpenAI(
             model=self.model_name,
             api_key=SecretStr(os.getenv("HF_TOKEN") or ""),
             base_url="https://router.huggingface.co/v1",
-            temperature=0.0 # Low temperature for more reliable factual extraction
+            temperature=0.0
         )
-        
-        # --- 3. Initialize the Parser ---
         self.output_parser = PydanticOutputParser(pydantic_object=PatientEvidences)
 
     def parser(self, text: str, context: Union[str, List[Any], dict]) -> PatientEvidences:
-        # --- 4. Define the Prompt Template ---
+        """
+        Invoke LLM to extract structured patient symptoms schema.
+
+        Args:
+            text (str): Patient descriptions or conversation fragment.
+            context (Union[str, List[Any], dict]): Retrieved context to guide the LLM.
+
+        Returns:
+            PatientEvidences: Populated Pydantic schema model.
+        """
         prompt = PromptTemplate(
             template='''
             You are a medical parser that extracts structured information from patient text.
@@ -75,27 +88,21 @@ class Parser:
         )
 
         try:
-            # Ensure we pass a JSON string into the prompt (the LLM expects a serialized structure)
             context_json = context if isinstance(context, str) else json.dumps(context)
-
             prompt_value = prompt.invoke({
                 "text": text,
                 "context": context_json,
             })
             
-            # 1. Get raw string from LLM
             llm_response = self.llm.invoke(prompt_value)
             
-            # --- PRINT 1: BEFORE PYDANTIC (Raw LLM Text) ---
             print("\n" + "="*50)
             print("1. BEFORE PYDANTIC (Raw LLM Output)")
             print("="*50)
             print(llm_response.content)
             
-            # 2. Parse string into Pydantic object
             parsed_result = self.output_parser.invoke(llm_response)
             
-            # --- PRINT 2: AFTER PYDANTIC (Structured Object) ---
             print("\n" + "="*50)
             print("2. AFTER PYDANTIC (Pydantic Object Representation)")
             print("="*50)
@@ -109,38 +116,35 @@ class Parser:
         except Exception as e:
             print(f"Error during LLM decoding/parsing: {e}")
             return PatientEvidences(evidences=[], values=[])
-         
-    def parse_query(self, text: str, context: Union[str, List[Any], dict]):
-        """Parse a user query with an optional context payload.
+
+    def parse_query(self, text: str, context: Union[str, List[Any], dict]) -> Tuple[List[str], List[Any]]:
+        """
+        Public endpoint implementation of the BaseSymptomParser interface.
 
         Args:
-            text: The raw user input string.
-            context: A JSON string or Python object (list/dict) representing relevant evidences.
-                     If a JSON string is passed (as returned by `nlu.retrieve`), it will be
-                     used directly. If a Python object is passed, it will be serialized.
+            text (str): Patient descriptions or conversation fragment.
+            context (Union[str, List[Any], dict]): Context details.
+
+        Returns:
+            Tuple[List[str], List[Any]]: Parallel lists of evidence keys and mapped values.
         """
         parsed_data = self.parser(text, context)
         if parsed_data is None:
             return [], []
-
         return parsed_data.evidences, parsed_data.values
-  
+
 if __name__ == "__main__":
     parser = Parser()
     G = pickle.load(open("Pickle/kg.pkl", "rb"))
     nlu = DDxGraphNLU(G)
-
     sample_text = "For the past couple of weeks, I’ve been having sudden episodes of very intense pain on one side of my head, mainly around my eye and temple. The pain feels sharp and unbearable, and when it happens my eye starts watering and my nose feels blocked on the same side. I can’t stay still during these attacks and feel extremely restless. These episodes happen multiple times and often around the same time of day, then completely go away in between.No fever and cough."
     context = nlu.retrieve(sample_text)
-
     print("\n" + "="*50)
     print("1. RETRIEVED CONTEXT FROM NLU")
     print("="*50)
     print(context)
-    print("="*50 + "\n") 
+    print("="*50 + "\n")
     evidences, values = parser.parse_query(sample_text, context)
-    
-    # --- PRINT 3: FINAL OUTPUTS ---
     print("\n" + "="*50)
     print("3. FINAL EXTRACTED LISTS")
     print("="*50)

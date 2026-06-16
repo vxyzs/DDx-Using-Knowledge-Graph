@@ -4,22 +4,30 @@ from core.traversal import KG_Traversal
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
 
-
 @lru_cache(maxsize=1)
 def load_graph(path="./Pickle/kg.pkl"):
     """
-    Loads the knowledge graph once and caches it.
-    Prevents re-loading if called multiple times.
+    Load the serialized disease-symptom knowledge graph.
+
+    Args:
+        path (str): Relative file path to the pickle graph representation.
+
+    Returns:
+        networkx.Graph: The loaded graph.
     """
     with open(path, "rb") as f:
         G = pickle.load(f)
     return G
 
-
 def initialize_scores(G):
     """
-    Efficiently initialize condition node scores.
-    Avoids repeated dictionary lookups.
+    Initialize score records for all condition nodes in the knowledge graph.
+
+    Args:
+        G (networkx.Graph): Knowledge graph database.
+
+    Returns:
+        dict: Dictionary mapping condition names/IDs to a start score of 0.0.
     """
     condition_nodes = [
         node
@@ -28,8 +36,10 @@ def initialize_scores(G):
     ]
     return dict.fromkeys(condition_nodes, 0.0)
 
-
 def main():
+    """
+    Main execution routine for running the interactive DDx diagnosis console script.
+    """
     try:
         print("Loading knowledge graph...")
         G = load_graph()
@@ -38,7 +48,6 @@ def main():
         return
 
     scores = initialize_scores(G)
-
     user_input = input("Describe your symptoms: ")
 
     nlu = DDxGraphNLU(G)
