@@ -1,6 +1,6 @@
 # Knowledge Graph-Based Differential Diagnosis (DDx) Engine
 
-An interactive, AI-driven clinical reasoning engine that parses raw patient symptom narratives, aligns them to a medical knowledge graph, and conducts dynamic, information-theoretic follow-up questioning to output ranked differential diagnoses.
+An explainable differential diagnosis engine that combines clinical NLP, knowledge graphs, Bayesian reasoning, and adaptive questioning to generate ranked diagnostic hypotheses under uncertainty. Intended as a decision-support system to assist clinicians, not replace professional medical diagnosis.
 
 ---
 
