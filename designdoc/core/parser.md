@@ -25,7 +25,10 @@ class PatientEvidences(BaseModel):
 ## 2. LLM Initialization and Parameter Selection
 
 - **Hugging Face Serverless Router**: Connects via LangChain's `ChatOpenAI` wrapper pointing to `https://router.huggingface.co/v1`.
-- **Model**: `openai/gpt-oss-safeguard-20b` (or other config model).
+- **Model Configuration**:
+  - *Primary Model*: Loaded dynamically from `config.json` via `model_name`.
+  - *Fallback Models*: Configurable backup models (`fallback_models`), defaulting to `[]` for custom model configurations.
+  - *Timeout*: Set via `request_timeout` (defaults to `30.0` seconds) to avoid thread blocking on network latency.
 - **`temperature=0.0`**:
   - *Rationale*: Crucial for clinical extraction. A temperature of `0` minimizes the model's creativity and hallucination rates, forcing it to remain highly deterministic and factual based strictly on the provided context.
 
@@ -43,8 +46,12 @@ The LLM is governed by a detailed prompt template instructing it on the followin
 
 ---
 
-## 4. Parser Invocation & Error Handling
+## 4. Parser Invocation & Resilient Error Handling
 
 1. **Context Serialization**: The retriever output (JSON string) is injected into the LLM prompt.
 2. **Double-Pass Printing**: Prints the raw string returned by the LLM, followed by the parsed Pydantic object dict.
-3. **Graceful Fallback**: If LLM API connectivity fails or the model returns a schema validation error, it catches the exception and returns an empty `PatientEvidences(evidences=[], values=[])` object rather than crashing the diagnostic loop.
+3. **Resilient Retry and Fallback System**:
+   - **Tenacity Integration**: Uses `tenacity` to automatically retry failed API requests or outputs that fail Pydantic parsing.
+   - **Configurable Attempts**: Retries each model up to `max_retries` attempts, waiting for a fixed `retry_delay` between attempts (both parameters loaded dynamically from configuration).
+   - **Alternative Fallback Models**: If the primary model fails completely after all retries, the parser transitions to subsequent models in the `fallback_models` list.
+   - **Safe Base Fallback**: Returns a blank `PatientEvidences(evidences=[], values=[])` object only if all candidate models and their respective retries are completely exhausted, protecting the interactive diagnostic engine from crashing.
