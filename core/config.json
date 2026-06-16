@@ -16,5 +16,10 @@
     "max_delta": 2.0,
     "absence_prob_threshold": 0.5,
     "absence_weight": 0.5
+  },
+  "logging": {
+    "level": "INFO",
+    "log_to_file": true,
+    "file_path": "results/ddx.log"
   }
 }

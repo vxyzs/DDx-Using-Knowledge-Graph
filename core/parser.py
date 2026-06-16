@@ -13,7 +13,10 @@ from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from core.config import load_config
 from core.interfaces import BaseSymptomParser
+from core.logger import get_logger
 from core.nlu import DDxGraphNLU
+
+logger = get_logger("parser")
 
 config = load_config()
 DEFAULT_MODEL_NAME = config["parser"]["model_name"]
@@ -167,54 +170,44 @@ class Parser(BaseSymptomParser):
                     with attempt:
                         # Print current model attempt count
                         attempt_num = attempt.retry_state.attempt_number
-                        print(
-                            f"[Parser] Querying model '{model}' "
+                        logger.info(
+                            f"Querying model '{model}' "
                             f"(Attempt {attempt_num}/{self.max_retries})..."
                         )
                         llm_response = llm_instance.invoke(prompt_value)
 
-                        print("\n" + "=" * 50)
-                        print(
-                            f"1. BEFORE PYDANTIC (Raw LLM Output - "
-                            f"Model: {model})"
+                        logger.debug(
+                            f"Raw LLM Output (Model: {model}):\n"
+                            f"{llm_response.content}"
                         )
-                        print("=" * 50)
-                        print(llm_response.content)
 
                         parsed_result = self.output_parser.invoke(
                             llm_response
                         )
 
-                        print("\n" + "=" * 50)
-                        print(
-                            "2. AFTER PYDANTIC (Pydantic Object "
-                            "Representation)"
+                        logger.debug(
+                            f"Pydantic Object:\n{repr(parsed_result)}"
                         )
-                        print("=" * 50)
-                        print(repr(parsed_result))
-                        print("\nAs Dictionary:")
-                        print(
-                            json.dumps(
-                                parsed_result.model_dump(), indent=2
-                            )
+                        dumped_dict = json.dumps(
+                            parsed_result.model_dump(), indent=2
                         )
-                        print("=" * 50 + "\n")
+                        logger.debug(f"As Dictionary:\n{dumped_dict}")
 
                         return parsed_result
 
             except Exception as e:
-                print(
-                    f"[Parser] Model '{model}' failed completely "
+                logger.warning(
+                    f"Model '{model}' failed completely "
                     f"after {self.max_retries} attempts: {e}"
                 )
                 if model_idx < len(models_to_try) - 1:
                     next_model = models_to_try[model_idx + 1]
-                    print(
-                        f"[Parser] Fallback: Switching to next model "
+                    logger.warning(
+                        f"Fallback: Switching to next model "
                         f"'{next_model}'."
                     )
 
-        print("[Parser] Critical: All LLM models and retries failed.")
+        logger.error("Critical: All LLM models and retries failed.")
         return PatientEvidences(evidences=[], values=[])
 
     def parse_query(

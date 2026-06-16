@@ -2,8 +2,11 @@ import math
 from abc import ABC, abstractmethod
 
 from core.config import load_config
+from core.logger import get_logger
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
+
+logger = get_logger("traversal")
 
 config = load_config()
 traversal_config = config["traversal"]
@@ -159,9 +162,9 @@ class KG_Traversal(BaseTraversal):
         if not evidences:
             return
 
-        print("\nParsed initial evidence:")
+        logger.info("Parsed initial evidence:")
         for e, v in zip(evidences, values):
-            print(f"  {e} → {v}")
+            logger.info(f"  {e} → {v}")
 
         self.apply_initial_evidence(evidences=evidences, values=values)
 
@@ -250,7 +253,7 @@ class KG_Traversal(BaseTraversal):
         """
         Run the interactive clinical diagnostic loop.
         """
-        print("\n=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
+        logger.info("=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
 
         for step in range(max_steps):
             ranked = sorted(
@@ -258,9 +261,9 @@ class KG_Traversal(BaseTraversal):
             )[:top_k_conditions]
             candidate_conditions = [c for c, _ in ranked]
 
-            print(f"\nStep {step + 1} — Current Differential:")
+            logger.info(f"Step {step + 1} — Current Differential:")
             for c, s in ranked:
-                print(f"  {c:40s} score={s:.4f}")
+                logger.info(f"  {c:40s} score={s:.4f}")
 
             if len(candidate_conditions) <= 1:
                 break
@@ -270,7 +273,7 @@ class KG_Traversal(BaseTraversal):
                 break
 
             parent = self.G.nodes[evidence].get("parent", None)
-            print(f"Parent evidence: {parent}")
+            logger.info(f"Parent evidence: {parent}")
 
             if (
                 parent
@@ -320,14 +323,14 @@ class KG_Traversal(BaseTraversal):
                 self.apply_initial_evidence(ext_evidences, ext_values)
             step += 1
 
-        print("\n=== FINAL RANKED CONDITIONS ===")
+        logger.info("=== FINAL RANKED CONDITIONS ===")
         self._convert_scores_to_probabilities(self.scores)
 
         top_candidates = sorted(
             self.scores.items(), key=lambda x: x[1], reverse=True
         )[:top_k_conditions]
         for c, s in top_candidates:
-            print(f"{c:40s} prob={s:.4f}")
+            logger.info(f"{c:40s} prob={s:.4f}")
 
         top_conditions_with_scores = {c: s for c, s in top_candidates}
         cond_evidence_map = {}

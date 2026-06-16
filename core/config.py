@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
@@ -29,6 +30,11 @@ def load_config() -> dict:
             "max_delta": 2.0,
             "absence_prob_threshold": 0.5,
             "absence_weight": 0.5
+        },
+        "logging": {
+            "level": "INFO",
+            "log_to_file": True,
+            "file_path": "results/ddx.log"
         }
     }
 
@@ -44,5 +50,7 @@ def load_config() -> dict:
                     default_config[key].update(user_config[key])
             return default_config
     except Exception as e:
-        print(f"Warning: Failed to load config.json ({e}). Using defaults.")
+        logging.getLogger("ddx.config").warning(
+            f"Failed to load config.json ({e}). Using defaults."
+        )
         return default_config

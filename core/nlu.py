@@ -6,9 +6,11 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from core.interfaces import BaseSymptomRetriever
-
 from core.config import load_config
+from core.interfaces import BaseSymptomRetriever
+from core.logger import get_logger
+
+logger = get_logger("nlu")
 
 with open("Data/ddxplus/release_evidences.compact.json", "r") as f:
     release_evidences = json.load(f)
@@ -66,9 +68,8 @@ class DDxGraphNLU(BaseSymptomRetriever):
         if count > 0:
             self.evidence_matrix = np.vstack(embeddings_list)
         else:
-            print(
-                "Warning: No pre-computed embeddings found. "
-                "Engine might be slow."
+            logger.warning(
+                "No pre-computed embeddings found. Engine might be slow."
             )
 
     def parse_query1(self, user_query):
@@ -97,10 +98,10 @@ class DDxGraphNLU(BaseSymptomRetriever):
             if c.strip()
         ]
 
-        print(f"\n[NLU] Processing: '{user_query}'")
+        logger.info(f"Processing: '{user_query}'")
 
         for i, chunk in enumerate(raw_chunks):
-            print(f" -> Chunk {i+1}: '{chunk}'")
+            logger.info(f" -> Chunk {i+1}: '{chunk}'")
             is_negated = any(
                 n in chunk
                 for n in ["no ", "not ", "don't ", "never ", "without "]
@@ -146,8 +147,8 @@ class DDxGraphNLU(BaseSymptomRetriever):
         best_results = []
         best_global_score = -1.0
 
-        print(
-            f"    [Debug] Checking Top {top_k} Candidates for span: '{text}'"
+        logger.debug(
+            f"Checking Top {top_k} Candidates for span: '{text}'"
         )
 
         for idx in top_indices:
@@ -198,8 +199,8 @@ class DDxGraphNLU(BaseSymptomRetriever):
             if current_candidate['score'] < THRESH_EVIDENCE:
                 continue
 
-            print(
-                f"      -> Candidate {eid}: RawQ={e_score:.3f}, "
+            logger.debug(
+                f" -> Candidate {eid}: RawQ={e_score:.3f}, "
                 f"FinalScore={current_candidate['score']:.3f}"
             )
 
@@ -232,7 +233,7 @@ class DDxGraphNLU(BaseSymptomRetriever):
         collected_evidences = []
         seen_evidences = set()
         for evid, val in zip(evidence, values):
-            print(f"{evid}: {val}")
+            logger.debug(f"{evid}: {val}")
             if evid in seen_evidences:
                 continue
             seen_evidences.add(evid)

@@ -49,7 +49,7 @@ The LLM is governed by a detailed prompt template instructing it on the followin
 ## 4. Parser Invocation & Resilient Error Handling
 
 1. **Context Serialization**: The retriever output (JSON string) is injected into the LLM prompt.
-2. **Double-Pass Printing**: Prints the raw string returned by the LLM, followed by the parsed Pydantic object dict.
+2. **Double-Pass Logging**: Logs the raw string returned by the LLM, followed by the parsed Pydantic object representation and dictionary representation at the `DEBUG` level.
 3. **Resilient Retry and Fallback System**:
    - **Tenacity Integration**: Uses `tenacity` to automatically retry failed API requests or outputs that fail Pydantic parsing.
    - **Configurable Attempts**: Retries each model up to `max_retries` attempts, waiting for a fixed `retry_delay` between attempts (both parameters loaded dynamically from configuration).
