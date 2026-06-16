@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field, SecretStr
 
 from core.interfaces import BaseSymptomParser
 from core.nlu import DDxGraphNLU
+from core.config import load_config
+
+config = load_config()
+DEFAULT_MODEL_NAME = config["parser"]["model_name"]
 
 load_dotenv()
 
@@ -44,14 +48,14 @@ class Parser(BaseSymptomParser):
     Pydantic templates.
     """
 
-    def __init__(self, model_name="openai/gpt-oss-safeguard-20b"):
+    def __init__(self, model_name=None):
         """
         Initialize the LLM parser.
 
         Args:
-            model_name (str): LLM model identifier.
+            model_name (str, optional): LLM model identifier.
         """
-        self.model_name = model_name
+        self.model_name = model_name or DEFAULT_MODEL_NAME
         self.llm = ChatOpenAI(
             model=self.model_name,
             api_key=SecretStr(os.getenv("HF_TOKEN") or ""),

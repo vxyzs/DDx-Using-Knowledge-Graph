@@ -8,12 +8,16 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from core.interfaces import BaseSymptomRetriever
 
+from core.config import load_config
+
 with open("Data/ddxplus/release_evidences.compact.json", "r") as f:
     release_evidences = json.load(f)
 
-EMBEDDING_MODEL = 'cambridgeltl/SapBERT-from-PubMedBERT-fulltext'
-THRESH_EVIDENCE = 0.40
-THRESH_VALUE = 0.55
+config = load_config()
+nlu_config = config["nlu"]
+EMBEDDING_MODEL = nlu_config["embedding_model"]
+THRESH_EVIDENCE = nlu_config["thresh_evidence"]
+THRESH_VALUE = nlu_config["thresh_value"]
 
 
 class DDxGraphNLU(BaseSymptomRetriever):

@@ -1,8 +1,12 @@
 import math
 from abc import ABC, abstractmethod
 
+from core.config import load_config
 from core.nlu import DDxGraphNLU
 from core.parser import Parser
+
+config = load_config()
+traversal_config = config["traversal"]
 
 
 class BaseTraversal(ABC):
@@ -10,10 +14,10 @@ class BaseTraversal(ABC):
     Abstract base class representing generic Diagnostic Traversal engines
     over the DDx Knowledge Graph.
     """
-    SMOOTH = 1e-6
-    MAX_DELTA = 2.0
-    ABSENCE_PROB_THRESHOLD = 0.5
-    ABSENCE_WEIGHT = 0.5
+    SMOOTH = traversal_config["smooth"]
+    MAX_DELTA = traversal_config["max_delta"]
+    ABSENCE_PROB_THRESHOLD = traversal_config["absence_prob_threshold"]
+    ABSENCE_WEIGHT = traversal_config["absence_weight"]
 
     def __init__(self, G):
         """

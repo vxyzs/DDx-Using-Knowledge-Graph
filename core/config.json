@@ -1,0 +1,16 @@
+{
+  "nlu": {
+    "embedding_model": "cambridgeltl/SapBERT-from-PubMedBERT-fulltext",
+    "thresh_evidence": 0.40,
+    "thresh_value": 0.55
+  },
+  "parser": {
+    "model_name": "openai/gpt-oss-safeguard-20b"
+  },
+  "traversal": {
+    "smooth": 1e-06,
+    "max_delta": 2.0,
+    "absence_prob_threshold": 0.5,
+    "absence_weight": 0.5
+  }
+}
