@@ -9,9 +9,41 @@ An explainable differential diagnosis engine that combines clinical NLP, knowled
 Placeholder for the DDx System walkthrough video:
 
 [![DDx System Demo Video](https://img.youtube.com/vi/placeholder/0.jpg)](https://www.youtube.com/watch?v=placeholder)
-
 ---
 
+### Example Workflow
+
+To demonstrate how the system works, we will walk through a sample patient case and show how the AI dynamically asks follow-up questions based on the patient's responses. This example illustrates the end-to-end diagnostic flow, from the initial presentation to the generation of differential diagnoses and the final assessment.
+
+#### Step 1: Landing Page (Initial UI)
+The user begins on the landing page, where they configure parameters in the **Control Center** located in the sidebar (such as *Maximum follow-up questions* and *Top Conditions to Track*) and enter their initial symptom narrative.
+![Landing Page](helper/images/flow1.png)
+
+#### Step 2: Patient-AI Question & Answer Loop Begins
+Once the symptoms are submitted, the engine starts the interactive loop. The AI asks follow-up questions **one by one** to gather missing clinical information.
+![Question 1](helper/images/flow2.png)
+
+#### Step 3: Progressive Interactive Questioning
+As the user provides answers, the AI continues to select the next most discriminating symptom code. The sidebar's **Live Diagnostic Session** panel tracks the progress bar and displays real-time symptom status:
+- **Confirmed Symptoms** (listed in green, e.g., `✓ Headache`)
+- **Absent Symptoms** (listed in red, e.g., `✗ Fever`)
+![Question 2](helper/images/flow3.png)
+![Question 3](helper/images/flow4.png)
+
+#### Step 4: Gating and Refinement
+The system gates questions based on patient answers and refines the diagnostic path.
+![Question 4](helper/images/flow5.png)
+![Question 5](helper/images/flow6.png)
+
+#### Step 5: Final Diagnostic Results
+After the total number of steps is achieved (or early convergence is reached), the AI concludes the questioning loop and renders the **Results** section. This panel includes:
+- **Top Conditions**: A ranked list of candidate conditions with their corresponding probabilities shown using dynamic progress meters.
+- **Supporting Evidence**: A list of the patient's confirmed symptoms that support the diagnostic hypotheses.
+- **Missing Evidence**: Crucial symptoms typically associated with those conditions that are absent in this case, assisting clinical differentiation.
+![Results 1](helper/images/flow7.png)
+![Results 2](helper/images/flow8.png)
+
+---
 ## ⚙️ Core Architecture & Data Flow
 
 The diagnostic system integrates semantic search (NLU), LLM parsing, and probabilistic graph traversal to guide patient interactions.
