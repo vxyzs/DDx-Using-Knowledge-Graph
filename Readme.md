@@ -41,6 +41,7 @@ After the total number of steps is achieved (or early convergence is reached), t
 - **Top Conditions**: A ranked list of candidate conditions with their corresponding probabilities shown using dynamic progress meters.
 - **Supporting Evidence**: A list of the patient's confirmed symptoms that support the diagnostic hypotheses.
 - **Missing Evidence**: Crucial symptoms typically associated with those conditions that are absent in this case, assisting clinical differentiation.
+
 ![Results 1](helper/images/flow7.png)
 ![Results 2](helper/images/flow8.png)
 
