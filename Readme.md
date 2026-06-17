@@ -27,6 +27,7 @@ Once the symptoms are submitted, the engine starts the interactive loop. The AI 
 As the user provides answers, the AI continues to select the next most discriminating symptom code. The sidebar's **Live Diagnostic Session** panel tracks the progress bar and displays real-time symptom status:
 - **Confirmed Symptoms** (listed in green, e.g., `✓ Headache`)
 - **Absent Symptoms** (listed in red, e.g., `✗ Fever`)
+
 ![Question 2](helper/images/flow3.png)
 ![Question 3](helper/images/flow4.png)
 
