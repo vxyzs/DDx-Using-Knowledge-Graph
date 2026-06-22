@@ -62,10 +62,9 @@ class BaseTraversal(ABC):
         """
         best_e, best_gain = None, -1.0
 
+        T=2.0
         max_s = max(scores[c] for c in candidate_conditions)
-        post = {
-            c: math.exp(scores[c] - max_s) for c in candidate_conditions
-        }
+        post = {c: math.exp((scores[c] - max_s) / T) for c in candidate_conditions}
         Z = sum(post.values())
         post = {c: p / Z for c, p in post.items()}
 
@@ -147,6 +146,7 @@ class KG_Traversal(BaseTraversal):
         self.asked = set()
         self.observed_yes = set()
         self.observed_no = set()
+        self.evidence_answers = {}
 
         if user_input:
             self._parse_initial_query(user_input)
@@ -168,6 +168,19 @@ class KG_Traversal(BaseTraversal):
 
         self.apply_initial_evidence(evidences=evidences, values=values)
 
+    def _format_answer(self, val):
+        if val in ("YES", "NO"):
+            return val
+        if isinstance(val, list):
+            res = []
+            for v in val:
+                if self.G.has_node(v):
+                    res.append(self.G.nodes[v].get("value_en", v))
+                else:
+                    res.append(v)
+            return ", ".join(res)
+        return str(val)
+
     def get_discriminating_evidence(self, candidate_conditions):
         """
         Locate next informative evidence using the base class solver.
@@ -180,6 +193,7 @@ class KG_Traversal(BaseTraversal):
         """
         Apply score adjustment based on yes/no symptom answer.
         """
+        self.evidence_answers[evidence] = "YES" if is_yes else "NO"
         for c in self.scores:
             p = (
                 self.G.edges[c, evidence]["p_e_given_c"]
@@ -208,7 +222,7 @@ class KG_Traversal(BaseTraversal):
         values.
         """
         self.observed_yes.add(evidence)
-
+        self.evidence_answers[evidence] = self._format_answer(chosen_values)
         for c in self.scores:
             best_pv = self.SMOOTH
             for v in chosen_values:
@@ -230,6 +244,7 @@ class KG_Traversal(BaseTraversal):
         """
         for evid, val in zip(evidences, values):
             self.asked.add(evid)
+            self.evidence_answers[evid] = self._format_answer(val)
 
             parent = self.G.nodes[evid].get("parent")
             if val not in ("YES", "NO") and parent:
@@ -245,7 +260,7 @@ class KG_Traversal(BaseTraversal):
                     for c in self.scores:
                         stats = self.G.edges[evid, v].get("cond_stats", {})
                         p = stats.get(c, {}).get("p_v_given_e_c", self.SMOOTH)
-                        self.scores[c] += self.safe_log(p)
+                        self.scores[c] = self.capped_add(self.scores[c], self.safe_log(p))
             else:
                 self.apply_binary_answer(evid, val == "YES")
 
@@ -256,14 +271,20 @@ class KG_Traversal(BaseTraversal):
         logger.info("=== INTERACTIVE DIAGNOSTIC TRAVERSAL ===")
 
         for step in range(max_steps):
-            ranked = sorted(
-                self.scores.items(), key=lambda x: x[1], reverse=True
-            )[:top_k_conditions]
+            T = 2.0
+            max_s = max(self.scores.values()) if self.scores else 0.0
+            exp_scores = {c: math.exp((s - max_s) / T) for c, s in self.scores.items()}
+            sum_exp = sum(exp_scores.values())
+            probs = {c: (e / sum_exp) for c, e in exp_scores.items()} if sum_exp > 0 else {c: 0.0 for c in self.scores}
+
+            ranked = sorted(probs.items(), key=lambda x: x[1], reverse=True)[
+                :top_k_conditions
+            ]
             candidate_conditions = [c for c, _ in ranked]
 
             logger.info(f"Step {step + 1} — Current Differential:")
-            for c, s in ranked:
-                logger.info(f"  {c:40s} score={s:.4f}")
+            for c, p in ranked:
+                logger.info(f"  {c:40s} prob={p*100:.2f}% (score={self.scores[c]:.4f})")
 
             if len(candidate_conditions) <= 1:
                 break
@@ -324,7 +345,10 @@ class KG_Traversal(BaseTraversal):
             step += 1
 
         logger.info("=== FINAL RANKED CONDITIONS ===")
-        self._convert_scores_to_probabilities(self.scores)
+        results = self.get_diagnostic_results(top_k_conditions=top_k_conditions)
+        return results
+    
+    def get_diagnostic_results(self, top_k_conditions=10):
 
         top_candidates = sorted(
             self.scores.items(), key=lambda x: x[1], reverse=True

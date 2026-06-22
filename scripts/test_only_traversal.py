@@ -13,7 +13,7 @@ from core.test_only_traversal import TestOnlyTraversal
 from core.traversal import KG_Traversal
 
 DATA_PATH = "./Data/ddxplus/release_test_patients.csv"
-N_SAMPLES = 10000
+N_SAMPLES = 10
 RANDOM_SEED = 42
 TOP_KS = [1, 3, 5]
 MAX_STEPS = 7
